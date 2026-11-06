@@ -95,3 +95,40 @@ def test_api_edi_natural_query(client):
     data = resp.json()
     assert data["intent"] == "MARKET_CAP_ANALYSIS"
     assert len(data["rows"]) >= 1
+
+
+def test_api_edi_spreadsheet_and_chart(client):
+    # Test GET sheet
+    sheet_resp = client.get("/api/edi/sheet")
+    assert sheet_resp.status_code == 200
+    sheet = sheet_resp.json()
+    assert sheet["total_rows"] >= 5
+    assert "ticker" in sheet["columns"]
+
+    # Test UPDATE cell
+    update_resp = client.post("/api/edi/sheet/update", json={
+        "ticker": "NVDA",
+        "column": "market_cap_b",
+        "value": 3200.0
+    })
+    assert update_resp.status_code == 200
+    assert update_resp.json()["status"] == "updated"
+
+    # Test GET chart
+    chart_resp = client.get("/api/edi/chart?chart_type=BAR")
+    assert chart_resp.status_code == 200
+    chart = chart_resp.json()
+    assert chart["chart_type"] == "BAR"
+    assert len(chart["series"]) >= 1
+
+    # Test Scraper Workers
+    workers_resp = client.get("/api/crawler/workers")
+    assert workers_resp.status_code == 200
+    assert len(workers_resp.json()) == 3
+
+    # Test Scrape to Sheet
+    scrape_resp = client.post("/api/crawler/scrape-to-sheet", json={
+        "url": "https://sec.gov/edgar/nvda-10k"
+    })
+    assert scrape_resp.status_code == 200
+    assert scrape_resp.json()["status"] == "success"

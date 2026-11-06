@@ -134,6 +134,47 @@ print(f"   -> Natural Answer: {edi_res['natural_language_answer']}")
 print(f"   -> Rows Returned: {len(edi_res['rows'])}")
 assert len(edi_res["rows"]) >= 2
 
+# 12. EDI Spreadsheet Grid API
+print("\n[TEST 12] EDI Interactive Spreadsheet Grid & Cell Updates...")
+sheet_res = get("/api/edi/sheet")
+print(f"   -> Columns: {len(sheet_res['columns'])} | Total Rows: {sheet_res['total_rows']}")
+assert sheet_res["total_rows"] >= 5
+
+cell_update = post("/api/edi/sheet/update", {
+    "ticker": "NVDA",
+    "column": "market_cap_b",
+    "value": 3180.0
+})
+print(f"   -> Cell Updated: {cell_update['ticker']}.{cell_update['column']} = {cell_update['value']}")
+assert cell_update["status"] == "updated"
+
+# 13. Dynamic Recharts/SVG Chart Specifications
+print("\n[TEST 13] Dynamic Recharts / SVG Chart Specifications...")
+bar_chart = get("/api/edi/chart?chart_type=BAR")
+print(f"   -> Bar Chart: '{bar_chart['title']}' | Series: {len(bar_chart['series'])}")
+radar_chart = get("/api/edi/chart?chart_type=RADAR")
+print(f"   -> Radar Chart: '{radar_chart['title']}' | Axes: {len(radar_chart['x_axis_labels'])}")
+assert bar_chart["chart_type"] == "BAR"
+assert radar_chart["chart_type"] == "RADAR"
+
+# 14. Arlo Scraper Worker Pool Telemetry
+print("\n[TEST 14] Arlo Scraper Distributed Worker Telemetry...")
+workers = get("/api/crawler/workers")
+print(f"   -> Active Worker Nodes: {len(workers)}")
+for w in workers:
+    print(f"      - {w['worker_id']}: {w['region']} ({w['latency_ms']}ms, {w['uptime_pct']}% uptime)")
+assert len(workers) == 3
+
+# 15. Arlo Scrape & Inject Directly Into Spreadsheet
+print("\n[TEST 15] Arlo Scrape & Inject Directly into EDI Spreadsheet...")
+scrape_to_sheet = post("/api/crawler/scrape-to-sheet", {
+    "url": "https://sec.gov/edgar/nvda-10k"
+})
+print(f"   -> Status: {scrape_to_sheet['status']} | Ingested: {scrape_to_sheet['scraped_url']}")
+print(f"   -> Parsed: {scrape_to_sheet['cleaned_bytes']} bytes ({scrape_to_sheet['compression_pct']}% token compression)")
+print(f"   -> Sheet Rows Total: {scrape_to_sheet['sheet_total_rows']}")
+assert scrape_to_sheet["status"] == "success"
+
 print("\n========================================================================")
-print("  SUCCESS: ALL 11 LIVE WORKFLOWS TESTED AND 100% OPERATIONAL!")
+print("  SUCCESS: ALL 15 LIVE WORKFLOWS TESTED AND 100% OPERATIONAL!")
 print("========================================================================")

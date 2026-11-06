@@ -42,25 +42,27 @@ graph TD
 
 ## 2. Five Flagship Workstation Modules
 
-### Module 1: Interactive Knowledge Graph & Contagion Engine
-- **Canvas Force-Directed Physics:** Custom HTML5 canvas engine rendering nodes sized by market cap, sector-colored (Foundry Gold, Silicon Cyan, Cloud Emerald), with particle flow along supply routes.
+### Module 1: EDI Spreadsheet & Recharts Studio (Inspired by Hamza's EDI)
+- **Interactive Spreadsheet Grid:** Real-time spreadsheet with row indices (`1, 2, 3...`), column headers (`A: TICKER`, `B: COMPANY`, `C: SECTOR`, `D: CTRY`, `E: MARKET CAP ($B)`, `F: REVENUE ($B)`, `G: GROSS MARGIN (%)`, `H: OPERATING MARGIN (%)`, `I: DEBT/EQUITY`), and formula bar (`fx`).
+- **Dynamic In-Place Cell Editing:** Click or double-click any cell to edit numbers; immediately updates SQLite in-memory analytical datastore and recalculates margins.
+- **Dynamic Recharts/SVG Engine:** Seamless rendering of dynamic Bar Charts (Revenue vs Operating Margin), Line Charts (Market Cap Distribution), and Radar Charts (Altman Z 5-Factor Spider Plots) with interactive hover tooltips.
+- **Natural Language ReAct Agent:** Compiles plain English queries into parameterized SQL, executing against in-memory analytical tables.
+
+### Module 2: Arlo Autonomous Web Scraping Automation Studio (Inspired by Hamza's Arlo)
+- **Distributed Worker Telemetry HUD:** Real-time monitoring of scraping worker nodes (`US-East`, `EU-West`, `AP-South`) displaying latency, residential proxy status, and 99.9% uptime.
+- **⚡ Scrape & Inject Directly to EDI Sheet:** One-click automated pipeline that ingests any SEC EDGAR filing or financial URL, prunes boilerplate DOM with Crawl4AI, extracts canonical financial entities, and automatically injects them into the active EDI spreadsheet and recalculates charts!
+- **DOM Boilerplate Pruning:** Strips unwanted tags, scripts, styles, iframes, and navigational blocks with high text-to-link density ($\text{density} > 0.55$).
+
+### Module 3: Interactive Knowledge Graph & Contagion Engine
+- **Canvas Force-Directed Physics:** Custom HTML5 canvas engine rendering nodes sized by market cap, sector-colored (Foundry Gold, Silicon Cyan, Cloud Emerald, Executive Purple), with particle flow along supply routes.
 - **Shortest Path Tracing:** Multi-hop relational resolution (e.g., ASML $\to$ TSMC $\to$ Nvidia $\to$ Azure).
 - **Systemic Contagion Shock Simulation:** Models shock cascade down directed supply lines:
   $$\text{Shock}_{target} = \text{Shock}_{source} \times \text{Weight}_{edge} \times \gamma$$
   Quantifies total market capitalization at risk ($B) and systemic hazard tier.
 
-### Module 2: Autonomous DAG Pipeline Orchestrator
+### Module 4: Autonomous DAG Pipeline Orchestrator
 - **Topological Task Execution:** Computes dependency ordering using `networkx.topological_sort` across multi-stage workflows (`FETCH_CRAWLER` $\to$ `PRUNE_DOM_MARKDOWN` $\to$ `EXTRACT_ENTITIES` $\to$ `LINK_CANONICAL_GRAPH` $\to$ `CALCULATE_RATIOS` $\to$ `SIMULATE_CONTAGION` $\to$ `SYNTHESIZE_EXECUTIVE_BRIEF`).
 - **Telemetry Log Stream:** Millisecond duration tracking, step status tags (`PENDING`, `RUNNING`, `COMPLETED`), and automated executive memorandum generation.
-
-### Module 3: Crawl4AI-Style Resilient Scraper & DOM Pruner
-- **Boilerplate Pruning:** Strips scripts, styles, iframes, banners, and navigational elements using text-to-link density analysis ($\text{density} > 0.55$).
-- **Structured Markdown Conversion:** Preserves heading hierarchies (`h1`–`h6`) and converts HTML tables into clean GitHub Flavored Markdown (GFM).
-- **Token Compression:** Measures token savings percentage between raw HTML and pruned markdown.
-
-### Module 4: EDI Natural Language to SQL ReAct Console
-- **Inspired by Hamza's EDI:** Natural language prompts compiled into parameterized SQLite queries executed against analytical tables (`companies`, `financials`, `supply_chain`, `executives`).
-- **Multi-Modal Inspection:** Renders natural language synthesis, synthesized SQL code, equivalent Graph Cypher queries, execution latency badges, and interactive data tables.
 
 ### Module 5: Quantitative Solvency Matrix (Altman Z & Beneish M)
 - **Altman Z-Score:**
