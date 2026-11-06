@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kuber Data Core (कुबेर) — Enterprise Financial Knowledge Graph & Market Cortex</title>
+  <link rel="stylesheet" href="/css/kuber.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- 1. Top Global Navigation & Trust Header -->
+  <header class="kuber-header">
+    <div class="brand-section">
+      <div class="brand-logo-vault">कु</div>
+      <div>
+        <div class="brand-title">KUBER DATA CORE <span>कुबेर</span></div>
+        <div class="brand-tagline">Autonomous Distributed Web Intelligence & Market Cortex</div>
+      </div>
+    </div>
+
+    <div class="header-status-cluster">
+      <div class="badge-fibo">SEC EDGAR FIBO-ALIGNED</div>
+      <div class="badge-status">
+        <div class="pulse-dot"></div>
+        <span>CORTEX ACTIVE (12ms)</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- 2. Live Market Ticker Tape -->
+  <div class="ticker-tape-container">
+    <div class="ticker-tape-title">LIVE MARKET CORTEX</div>
+    <div class="ticker-tape-track" id="tickerTapeTrack">
+      <!-- Injected dynamically via app.js -->
+    </div>
+  </div>
+
+  <!-- 3. Workstation Navigation Bar -->
+  <nav class="workstation-nav-bar">
+    <button class="ws-tab-btn active" data-tab="ws-graph">
+      <span>🌐</span> 1: KNOWLEDGE GRAPH & CONTAGION
+    </button>
+    <button class="ws-tab-btn" data-tab="ws-dag">
+      <span>⚡</span> 2: AUTONOMOUS DAG ORCHESTRATOR
+    </button>
+    <button class="ws-tab-btn" data-tab="ws-crawler">
+      <span>🕷️</span> 3: CRAWL4AI SCRAPER & DOM PRUNER
+    </button>
+    <button class="ws-tab-btn" data-tab="ws-edi">
+      <span>💬</span> 4: EDI NATURAL LANGUAGE SQL CONSOLE
+    </button>
+    <button class="ws-tab-btn" data-tab="ws-ratios">
+      <span>📊</span> 5: QUANTITATIVE VALUATION & ALTMAN Z
+    </button>
+  </nav>
+
+  <!-- 4. Workstation Main Viewport -->
+  <main class="workstation-viewport">
+
+    <!-- =========================================================================
+         WORKSPACE 1: KNOWLEDGE GRAPH & SUPPLY CHAIN CONTAGION
+         ========================================================================= -->
+    <section class="workspace-panel active" id="ws-graph">
+      <div class="graph-viewport-grid">
+        
+        <!-- Interactive HTML5 Canvas Graph -->
+        <div class="graph-canvas-container">
+          <div class="graph-overlay-controls">
+            <button class="graph-ctrl-btn" id="btnResetZoom">⟲ Reset Zoom</button>
+          </div>
+          <canvas id="graphCanvas"></canvas>
+        </div>
+
+        <!-- Sidebar Inspector & Controls -->
+        <div class="graph-sidebar-inspector">
+          
+          <!-- Node Inspector Card -->
+          <div class="kuber-card">
+            <div class="kuber-card-header">
+              <span class="card-title"><span>NODE INSPECTOR</span></span>
+              <span class="badge-fibo">FIBO Node</span>
+            </div>
+            <div id="graphNodeDetail">
+              <span style="color: var(--text-dim); font-size: 13px;">Click any graph node to inspect entity attributes...</span>
+            </div>
+          </div>
+
+          <!-- Multi-Hop Path Finder -->
+          <div class="kuber-card">
+            <div class="kuber-card-header">
+              <span class="card-title"><span>MULTI-HOP PATH FINDER</span></span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <div>
+                <label style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">SOURCE ENTITY</label>
+                <select class="kuber-input" id="pathSourceSelect" style="width: 100%; margin-top: 4px;"></select>
+              </div>
+              <div>
+                <label style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">TARGET ENTITY</label>
+                <select class="kuber-input" id="pathTargetSelect" style="width: 100%; margin-top: 4px;"></select>
+              </div>
+              <button class="kuber-btn-gold" id="btnFindPath" style="justify-content: center; margin-top: 4px;">
+                Calculate Relational Path
+              </button>
+              <div id="pathResultBox" style="background: var(--bg-input); padding: 10px; border-radius: 6px; font-size: 12px; margin-top: 4px;">
+                Select entities to calculate strategic supply path.
+              </div>
+            </div>
+          </div>
+
+          <!-- Systemic Shock Contagion Simulator -->
+          <div class="kuber-card">
+            <div class="kuber-card-header">
+              <span class="card-title" style="color: var(--contagion-rose);">
+                <span>CONTAGION SHOCK SIMULATOR</span>
+              </span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <div>
+                <label style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">SHOCK SOURCE NODE</label>
+                <select class="kuber-input" id="shockSourceSelect" style="width: 100%; margin-top: 4px;"></select>
+              </div>
+              <div>
+                <div style="display: flex; justify-content: space-between; font-size: 11px; font-family: var(--font-mono); color: var(--text-muted);">
+                  <span>DISRUPTION MAGNITUDE</span>
+                  <strong style="color: var(--contagion-rose);" id="shockMagnitudeVal">35%</strong>
+                </div>
+                <input type="range" id="shockMagnitudeSlider" min="5" max="80" value="35" step="5" style="width: 100%; margin-top: 6px;">
+              </div>
+              <button class="kuber-btn-gold" id="btnSimulateShock" style="background: linear-gradient(135deg, #f43f5e 0%, #be123c 100%); color: #fff; justify-content: center;">
+                Simulate Shock Cascade
+              </button>
+              <div id="shockResultBox" style="background: var(--bg-input); padding: 10px; border-radius: 6px; font-size: 12px; margin-top: 4px;">
+                Ready to model supply shock propagation.
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+    <!-- =========================================================================
+         WORKSPACE 2: AUTONOMOUS DAG ORCHESTRATOR
+         ========================================================================= -->
+    <section class="workspace-panel" id="ws-dag">
+      <div class="kuber-card">
+        <div class="kuber-card-header">
+          <span class="card-title">
+            <span>AUTONOMOUS DIRECTED ACYCLIC GRAPH (DAG) PIPELINE ORCHESTRATOR</span>
+          </span>
+          <div style="display: flex; gap: 12px; align-items: center;">
+            <select class="kuber-input" id="dagPipelineSelect" style="font-family: var(--font-mono); font-size: 12px;"></select>
+            <button class="kuber-btn-gold" id="btnRunDAG">
+              Execute Autonomous Pipeline
+            </button>
+          </div>
+        </div>
+
+        <!-- Visual Flowchart Steps -->
+        <div class="dag-flow-container" id="dagFlowSteps">
+          <!-- Dynamically populated -->
+        </div>
+
+        <!-- Executive Brief Display -->
+        <div style="margin-top: 20px;" id="dagExecutiveBrief">
+          <span style="color: var(--text-dim); font-size: 13px;">Execute pipeline to synthesize strategic executive intelligence brief...</span>
+        </div>
+
+        <!-- Real-time Step Log Stream -->
+        <div style="margin-top: 20px;">
+          <div style="font-size: 11px; font-family: var(--font-mono); color: var(--kuber-gold); margin-bottom: 8px;">
+            REAL-TIME PIPELINE EXECUTION TELEMETRY LOG
+          </div>
+          <div class="kuber-log-stream" id="dagLogStream">
+            <div>[READY] Pipeline orchestrator initialized with topological task resolver. Click 'Execute' to begin.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================================
+         WORKSPACE 3: CRAWL4AI SCRAPER & DOM PRUNER
+         ========================================================================= -->
+    <section class="workspace-panel" id="ws-crawler">
+      <div class="kuber-card">
+        <div class="kuber-card-header">
+          <span class="card-title">
+            <span>CRAWL4AI-STYLE RESILIENT WEB SCRAPER & DOM PRUNER</span>
+          </span>
+          <span class="badge-fibo">Boilerplate Pruner & Markdown Synthesizer</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 220px auto; gap: 12px; margin-bottom: 20px;">
+          <input type="text" class="kuber-input" id="crawlUrlInput" value="https://sec.gov/edgar/nvda-10k" placeholder="Enter URL or SEC filing path...">
+          <select class="kuber-input" id="pruneStrategySelect" style="font-family: var(--font-mono); font-size: 12px;">
+            <option value="PRUNING_LXML">Strategy: LXML Boilerplate Prune</option>
+            <option value="BM25_RELEVANCE">Strategy: BM25 Query Relevance</option>
+            <option value="TOKEN_WINDOW_CHUNK">Strategy: Semantic Token Chunker</option>
+          </select>
+          <button class="kuber-btn-gold" id="btnExecuteCrawl">
+            Ingest & Prune DOM
+          </button>
+        </div>
+
+        <!-- Compression Metrics Banner -->
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 20px;">
+          <div style="background: var(--bg-input); padding: 14px; border-radius: 8px; border: 1px solid var(--border-subtle);">
+            <div style="font-size: 11px; font-family: var(--font-mono); color: var(--text-dim);">RAW INGESTED CHARACTERS</div>
+            <div style="font-size: 24px; font-weight: 800; color: #fff; font-family: var(--font-mono);" id="crawlRawChars">2,840</div>
+          </div>
+          <div style="background: var(--bg-input); padding: 14px; border-radius: 8px; border: 1px solid var(--border-subtle);">
+            <div style="font-size: 11px; font-family: var(--font-mono); color: var(--text-dim);">CLEANED LLM-READY MARKDOWN</div>
+            <div style="font-size: 24px; font-weight: 800; color: var(--kuber-gold); font-family: var(--font-mono);" id="crawlCleanChars">1,215</div>
+          </div>
+          <div style="background: var(--bg-input); padding: 14px; border-radius: 8px; border: 1px solid var(--border-subtle);">
+            <div style="font-size: 11px; font-family: var(--font-mono); color: var(--text-dim);">TOKEN COMPRESSION RATIO</div>
+            <div style="font-size: 24px; font-weight: 800; color: var(--market-emerald); font-family: var(--font-mono);" id="crawlCompressionBadge">57.2% Compression</div>
+          </div>
+        </div>
+
+        <!-- Markdown Output Box -->
+        <div>
+          <div style="font-size: 11px; font-family: var(--font-mono); color: var(--kuber-gold); margin-bottom: 8px;">
+            CLEANED STRUCTURED MARKDOWN OUTPUT
+          </div>
+          <div style="background: #04070d; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 16px; font-family: var(--font-mono); font-size: 13px; color: #e2e8f0; height: 320px; overflow-y: auto; white-space: pre-wrap;" id="crawlMarkdownPreview">
+# NVIDIA CORPORATION — Form 10-K Annual Report
+
+NVIDIA pioneered accelerated computing to tackle challenges that no one else can solve. Data Center revenue grew to $47.5B, driven by compute platforms for large language models and generative AI.
+
+## Supply Chain Dependencies
+We rely on Taiwan Semiconductor Manufacturing Company (TSMC) as single-source foundry for advanced wafer lithography and CoWoS packaging. Furthermore, ASML provides extreme ultraviolet (EUV) photolithography technology.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================================
+         WORKSPACE 4: EDI NATURAL LANGUAGE SQL CONSOLE
+         ========================================================================= -->
+    <section class="workspace-panel" id="ws-edi">
+      <div class="kuber-card">
+        <div class="kuber-card-header">
+          <span class="card-title">
+            <span>EDI (ENTERPRISE DATA INTELLIGENCE) NATURAL LANGUAGE SQL RE-ACT ENGINE</span>
+          </span>
+          <span class="badge-fibo" id="ediLatencyBadge">0.0 ms</span>
+        </div>
+
+        <!-- Query Input Box -->
+        <div class="edi-query-box">
+          <input type="text" class="kuber-input" id="ediQueryInput" style="flex: 1;" placeholder="Ask EDI anything in plain English (e.g. 'Show tech companies with market cap over $2T' or 'Who supplies chips to Nvidia?')...">
+          <button class="kuber-btn-gold" id="btnRunEDI">
+            Ask EDI
+          </button>
+        </div>
+
+        <!-- Quick Prompt Chips -->
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px;">
+          <span style="font-size: 11px; color: var(--text-dim); font-family: var(--font-mono); align-self: center;">EXAMPLE QUERIES:</span>
+          <button class="graph-ctrl-btn quick-prompt-chip" data-query="Show me companies with market cap over 2000 billion">Market Cap &gt; $2T</button>
+          <button class="graph-ctrl-btn quick-prompt-chip" data-query="Which tech company has the highest operating margin?">Highest Operating Margin</button>
+          <button class="graph-ctrl-btn quick-prompt-chip" data-query="Who supplies chips to Nvidia?">Nvidia Chip Suppliers</button>
+          <button class="graph-ctrl-btn quick-prompt-chip" data-query="Who is the CEO of Nvidia?">Nvidia Leadership</button>
+          <button class="graph-ctrl-btn quick-prompt-chip" data-query="What companies compete with Microsoft?">Microsoft Competitors</button>
+        </div>
+
+        <!-- Natural Language Synthesis Card -->
+        <div style="background: rgba(234, 179, 8, 0.05); border: 1px solid var(--border-gold); border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+          <div style="font-size: 11px; font-family: var(--font-mono); color: var(--kuber-gold); margin-bottom: 4px;">NATURAL LANGUAGE ANALYTICAL SYNTHESIS</div>
+          <div style="font-size: 14px; color: #fff; line-height: 1.6;" id="ediAnswerText">
+            Welcome to EDI. Enter an analytical query or click one of the quick prompt chips above to compile English into SQL & Graph traversals.
+          </div>
+        </div>
+
+        <!-- Synthesized Code Inspectors -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px;">
+          <div style="background: #04070d; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px;">
+            <div style="font-size: 10px; font-family: var(--font-mono); color: var(--cyber-cyan); margin-bottom: 4px;">SYNTHESIZED SQL QUERY (SQLITE ANALYTICAL STORE)</div>
+            <pre style="font-family: var(--font-mono); font-size: 11px; color: #94a3b8; overflow-x: auto;" id="ediSqlCode">-- SQL statement will appear here</pre>
+          </div>
+          <div style="background: #04070d; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px;">
+            <div style="font-size: 10px; font-family: var(--font-mono); color: var(--kuber-gold); margin-bottom: 4px;">EQUIVALENT GRAPH CYPHER TRAVERSAL</div>
+            <pre style="font-family: var(--font-mono); font-size: 11px; color: #94a3b8; overflow-x: auto;" id="ediCypherCode">-- Cypher pattern will appear here</pre>
+          </div>
+        </div>
+
+        <!-- Dynamic Data Table -->
+        <div class="kuber-table-wrapper">
+          <table class="kuber-table">
+            <thead id="ediTableHead">
+              <!-- Injected dynamically -->
+            </thead>
+            <tbody id="ediTableBody">
+              <tr>
+                <td style="color: var(--text-dim); text-align: center; padding: 32px;" colspan="6">
+                  Analytical table ready.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================================
+         WORKSPACE 5: QUANTITATIVE VALUATION & ALTMAN Z
+         ========================================================================= -->
+    <section class="workspace-panel" id="ws-ratios">
+      <div class="kuber-card">
+        <div class="kuber-card-header">
+          <span class="card-title">
+            <span>INSTITUTIONAL VALUATION & SOLVENCY MATRIX</span>
+          </span>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <label style="font-size: 12px; font-family: var(--font-mono); color: var(--text-muted);">SELECT TICKER:</label>
+            <select class="kuber-input" id="valTickerSelect" style="font-family: var(--font-mono); font-size: 13px; font-weight: 700;">
+              <option value="NVDA">NVDA — NVIDIA Corporation</option>
+              <option value="MSFT">MSFT — Microsoft Corporation</option>
+              <option value="AAPL">AAPL — Apple Inc.</option>
+              <option value="TSM">TSM — Taiwan Semiconductor</option>
+              <option value="ASML">ASML — ASML Holding N.V.</option>
+              <option value="AMZN">AMZN — Amazon.com, Inc.</option>
+            </select>
+            <span class="badge-status" id="valHealthGrade" style="font-size: 14px; font-weight: 800; padding: 6px 14px;">AAA</span>
+          </div>
+        </div>
+
+        <div class="valuation-grid">
+          
+          <!-- Altman Z-Score Card -->
+          <div class="altman-gauge-card">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 12px; font-family: var(--font-mono); color: var(--kuber-gold); font-weight: 700;">ALTMAN Z-SCORE (SOLVENCY)</span>
+              <span class="badge-fibo" id="valAltmanZone">SAFE ZONE</span>
+            </div>
+            
+            <div class="altman-score-large">
+              <span id="valAltmanScore">7.24</span>
+              <span style="font-size: 14px; color: var(--text-dim); font-weight: normal;">/ 10.0</span>
+            </div>
+
+            <div class="altman-track">
+              <div class="track-zone-distress" title="Distress Zone (< 1.81)"></div>
+              <div class="track-zone-grey" title="Grey Zone (1.81 - 2.99)"></div>
+              <div class="track-zone-safe" title="Safe Zone (> 2.99)"></div>
+              <div class="altman-pointer" id="valAltmanPointer" style="left: 72%;"></div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; font-size: 10px; font-family: var(--font-mono); color: var(--text-dim);">
+              <span>DISTRESS (&lt; 1.81)</span>
+              <span>GREY (1.81-2.99)</span>
+              <span>SAFE (&gt; 2.99)</span>
+            </div>
+
+            <div style="font-size: 12px; color: #cbd5e1; line-height: 1.5;" id="valAltmanInterp">
+              Strong financial health. Extremely low insolvency hazard within 24-month horizon.
+            </div>
+          </div>
+
+          <!-- Beneish M-Score Card -->
+          <div class="altman-gauge-card">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 12px; font-family: var(--font-mono); color: var(--cyber-cyan); font-weight: 700;">BENEISH M-SCORE (EARNINGS QUALITY)</span>
+              <span class="badge-status" id="valBeneishRisk" style="font-size: 11px;">UNLIKELY</span>
+            </div>
+
+            <div class="altman-score-large" style="color: var(--cyber-cyan);">
+              <span id="valBeneishScore">-1.77</span>
+              <span style="font-size: 14px; color: var(--text-dim); font-weight: normal;">Threshold: -1.78</span>
+            </div>
+
+            <div style="font-size: 12px; color: #cbd5e1; line-height: 1.5; margin-top: 10px;">
+              Evaluates asset quality, gross margins, sales growth, and accruals. Scores below -1.78 indicate low probability of accounting distortion.
+            </div>
+          </div>
+
+          <!-- Key Ratios Matrix -->
+          <div class="altman-gauge-card">
+            <div style="font-size: 12px; font-family: var(--font-mono); color: var(--market-emerald); font-weight: 700; margin-bottom: 8px;">
+              PROFITABILITY & LEVERAGE METRICS
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-family: var(--font-mono); font-size: 12px;">
+              <div style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px;">
+                <span style="color: var(--text-dim); display: block; font-size: 10px;">GROSS MARGIN</span>
+                <strong style="color: #fff; font-size: 14px;" id="valGrossMargin">72.72%</strong>
+              </div>
+              <div style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px;">
+                <span style="color: var(--text-dim); display: block; font-size: 10px;">OPERATING MARGIN</span>
+                <strong style="color: var(--market-emerald); font-size: 14px;" id="valOperatingMargin">54.12%</strong>
+              </div>
+              <div style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px;">
+                <span style="color: var(--text-dim); display: block; font-size: 10px;">CURRENT RATIO</span>
+                <strong style="color: var(--kuber-gold); font-size: 14px;" id="valCurrentRatio">4.17</strong>
+              </div>
+              <div style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px;">
+                <span style="color: var(--text-dim); display: block; font-size: 10px;">DEBT TO EQUITY</span>
+                <strong style="color: var(--cyber-cyan); font-size: 14px;" id="valDebtEquity">0.53</strong>
+              </div>
+              <div style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; grid-column: 1 / -1;">
+                <span style="color: var(--text-dim); display: block; font-size: 10px;">PRICE TO EARNINGS (P/E)</span>
+                <strong style="color: #fff; font-size: 14px;" id="valPeRatio">105.85</strong>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Scripts -->
+  <script src="/js/graph_visualizer.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
