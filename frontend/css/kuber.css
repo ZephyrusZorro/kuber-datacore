@@ -599,6 +599,248 @@ body {
   line-height: 1.6;
 }
 
+/* --- EDI Interactive Spreadsheet Studio (Hamza's EDI Inspired) --- */
+.edi-studio-container {
+  display: grid;
+  grid-template-columns: 1fr 420px;
+  gap: 20px;
+}
+
+.spreadsheet-toolbar {
+  background: rgba(10, 14, 23, 0.95);
+  border: 1px solid var(--border-gold);
+  border-radius: 8px 8px 0 0;
+  padding: 10px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.formula-bar-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #04070d;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 6px 12px;
+  flex: 1;
+  min-width: 280px;
+}
+
+.formula-fx {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--kuber-gold);
+}
+
+.formula-cell-coord {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--cyber-cyan);
+  background: rgba(56, 189, 248, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.formula-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  width: 100%;
+}
+
+.spreadsheet-grid-wrapper {
+  background: #04070d;
+  border: 1px solid var(--border-gold);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  overflow: auto;
+  max-height: 480px;
+}
+
+.spreadsheet-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  user-select: none;
+}
+
+.spreadsheet-table th {
+  background: #090e18;
+  color: var(--kuber-gold);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 8px 12px;
+  font-weight: 700;
+  font-size: 11px;
+  text-align: left;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.spreadsheet-table th.col-corner,
+.spreadsheet-table td.row-num {
+  background: #060912;
+  color: var(--text-dim);
+  text-align: center;
+  width: 38px;
+  font-weight: 600;
+  position: sticky;
+  left: 0;
+  z-index: 6;
+  border-right: 1px solid var(--border-gold);
+}
+
+.spreadsheet-table td {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 7px 12px;
+  color: #f1f5f9;
+  cursor: cell;
+  white-space: nowrap;
+}
+
+.spreadsheet-table td.editable-cell:hover {
+  background: rgba(250, 204, 21, 0.05);
+}
+
+.spreadsheet-table td.cell-selected {
+  outline: 2px solid var(--kuber-gold);
+  outline-offset: -2px;
+  background: rgba(250, 204, 21, 0.12) !important;
+}
+
+/* --- Dynamic SVG / Recharts Chart Canvas --- */
+.chart-panel-container {
+  background: var(--bg-card);
+  border: 1px solid var(--border-gold);
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.chart-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.chart-type-pills {
+  display: flex;
+  gap: 6px;
+}
+
+.chart-pill-btn {
+  background: rgba(13, 19, 31, 0.9);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.chart-pill-btn:hover, .chart-pill-btn.active {
+  background: var(--kuber-gold);
+  color: #000;
+  border-color: var(--kuber-gold);
+  font-weight: 700;
+}
+
+.chart-svg-box {
+  background: #04070d;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 12px;
+  height: 380px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.chart-svg-render {
+  width: 100%;
+  height: 100%;
+}
+
+.chart-svg-bar {
+  transition: height 0.3s ease, y 0.3s ease, fill 0.2s ease;
+  cursor: pointer;
+}
+
+.chart-svg-bar:hover {
+  filter: brightness(1.2);
+}
+
+.chart-tooltip {
+  position: absolute;
+  background: rgba(10, 14, 23, 0.95);
+  border: 1px solid var(--kuber-gold);
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 20;
+}
+
+/* --- Arlo Web Scraper Worker Telemetry HUD --- */
+.scraper-workers-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.worker-node-card {
+  background: rgba(10, 14, 23, 0.9);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.worker-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+
+.worker-status-active {
+  color: var(--market-emerald);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.worker-meta-line {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  justify-content: space-between;
+}
+
 /* --- Responsive Scrollbars --- */
 ::-webkit-scrollbar {
   width: 6px;

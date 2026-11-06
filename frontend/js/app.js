@@ -1,12 +1,15 @@
 /**
  * Kuber Data Core (कुबेर) — Main Frontend Workstation Controller
- * Manages Workspaces, Graph Visualizer, Autonomous DAG Runner, Crawl4AI DOM Pruner,
- * EDI Natural Language SQL Console, and Quantitative Valuation Matrix.
+ * EDI Interactive Spreadsheet & Recharts Studio, Arlo Web Scraping Automation,
+ * Knowledge Graph & Contagion Shock Engine, Autonomous DAG Runner, and Valuation Matrix.
  */
 
 // Global State
 const state = {
-  currentTab: "ws-graph",
+  currentTab: "ws-edi-studio",
+  activeChartType: "BAR",
+  selectedCell: null,
+  spreadsheetData: null,
   graphView: null,
   visualizer: null,
   selectedNode: null,
@@ -21,10 +24,10 @@ document.addEventListener("DOMContentLoaded", () => {
   initElementRegistry();
   initNavigationTabs();
   initMarketTickerTape();
+  initEDIStudio();
+  initArloScraperWorkspace();
   initGraphWorkspace();
   initDAGWorkspace();
-  initCrawlerWorkspace();
-  initEDIWorkspace();
   initValuationWorkspace();
 });
 
@@ -32,6 +35,40 @@ function initElementRegistry() {
   el.tabBtns = document.querySelectorAll(".ws-tab-btn");
   el.panels = document.querySelectorAll(".workspace-panel");
   el.tickerTapeTrack = document.getElementById("tickerTapeTrack");
+
+  // EDI Elements
+  el.ediQueryInput = document.getElementById("ediQueryInput");
+  el.btnRunEDI = document.getElementById("btnRunEDI");
+  el.ediAnswerText = document.getElementById("ediAnswerText");
+  el.ediLatencyBadge = document.getElementById("ediLatencyBadge");
+  el.quickPromptChips = document.querySelectorAll(".quick-prompt-chip");
+  el.spreadsheetGrid = document.getElementById("spreadsheetGrid");
+  el.formulaCoord = document.getElementById("formulaCoord");
+  el.formulaInput = document.getElementById("formulaInput");
+  el.btnRefreshSheet = document.getElementById("btnRefreshSheet");
+  el.btnExportCSV = document.getElementById("btnExportCSV");
+  el.sheetTotalRows = document.getElementById("sheetTotalRows");
+  el.sheetTotalCap = document.getElementById("sheetTotalCap");
+  el.sheetAvgMargin = document.getElementById("sheetAvgMargin");
+
+  // Chart Elements
+  el.chartPillBtns = document.querySelectorAll(".chart-pill-btn");
+  el.chartTitle = document.getElementById("chartTitle");
+  el.chartSvg = document.getElementById("chartSvg");
+  el.chartTooltip = document.getElementById("chartTooltip");
+  el.chartLegend = document.getElementById("chartLegend");
+
+  // Arlo Scraper Elements
+  el.scraperWorkersContainer = document.getElementById("scraperWorkersContainer");
+  el.crawlPresetSelect = document.getElementById("crawlPresetSelect");
+  el.crawlUrlInput = document.getElementById("crawlUrlInput");
+  el.pruneStrategySelect = document.getElementById("pruneStrategySelect");
+  el.btnExecuteCrawl = document.getElementById("btnExecuteCrawl");
+  el.btnScrapeToSheet = document.getElementById("btnScrapeToSheet");
+  el.crawlRawChars = document.getElementById("crawlRawChars");
+  el.crawlCleanChars = document.getElementById("crawlCleanChars");
+  el.crawlCompressionBadge = document.getElementById("crawlCompressionBadge");
+  el.crawlMarkdownPreview = document.getElementById("crawlMarkdownPreview");
 
   // Graph Elements
   el.graphNodeDetail = document.getElementById("graphNodeDetail");
@@ -52,26 +89,6 @@ function initElementRegistry() {
   el.dagFlowSteps = document.getElementById("dagFlowSteps");
   el.dagLogStream = document.getElementById("dagLogStream");
   el.dagExecutiveBrief = document.getElementById("dagExecutiveBrief");
-
-  // Crawler Elements
-  el.crawlUrlInput = document.getElementById("crawlUrlInput");
-  el.pruneStrategySelect = document.getElementById("pruneStrategySelect");
-  el.btnExecuteCrawl = document.getElementById("btnExecuteCrawl");
-  el.crawlRawChars = document.getElementById("crawlRawChars");
-  el.crawlCleanChars = document.getElementById("crawlCleanChars");
-  el.crawlCompressionBadge = document.getElementById("crawlCompressionBadge");
-  el.crawlMarkdownPreview = document.getElementById("crawlMarkdownPreview");
-
-  // EDI Elements
-  el.ediQueryInput = document.getElementById("ediQueryInput");
-  el.btnRunEDI = document.getElementById("btnRunEDI");
-  el.ediAnswerText = document.getElementById("ediAnswerText");
-  el.ediSqlCode = document.getElementById("ediSqlCode");
-  el.ediCypherCode = document.getElementById("ediCypherCode");
-  el.ediLatencyBadge = document.getElementById("ediLatencyBadge");
-  el.ediTableHead = document.getElementById("ediTableHead");
-  el.ediTableBody = document.getElementById("ediTableBody");
-  el.quickPromptChips = document.querySelectorAll(".quick-prompt-chip");
 
   // Valuation Elements
   el.valTickerSelect = document.getElementById("valTickerSelect");
@@ -129,14 +146,587 @@ async function initMarketTickerTape() {
       `;
     }).join("");
 
-    // Duplicate for smooth seamless loop
     el.tickerTapeTrack.innerHTML = tickerHTML + tickerHTML;
   } catch (err) {
     console.error("Ticker tape fetch failed:", err);
   }
 }
 
-/* --- Workspace 1: Knowledge Graph & Contagion --- */
+/* =========================================================================
+   WORKSPACE 1: EDI SPREADSHEET & RECHARTS STUDIO
+   ========================================================================= */
+async function initEDIStudio() {
+  // Query Input
+  el.btnRunEDI.addEventListener("click", () => executeEDIQuery(el.ediQueryInput.value));
+  el.ediQueryInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") executeEDIQuery(el.ediQueryInput.value);
+  });
+
+  el.quickPromptChips.forEach(chip => {
+    chip.addEventListener("click", () => {
+      const q = chip.dataset.query;
+      el.ediQueryInput.value = q;
+      executeEDIQuery(q);
+    });
+  });
+
+  // Chart Type Pills
+  el.chartPillBtns.forEach(btn => {
+    btn.addEventListener("click", () => {
+      el.chartPillBtns.forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      state.activeChartType = btn.dataset.chart;
+      loadEDIChart(state.activeChartType);
+    });
+  });
+
+  // Toolbar Actions
+  el.btnRefreshSheet.addEventListener("click", loadSpreadsheetData);
+  el.btnExportCSV.addEventListener("click", exportSpreadsheetCSV);
+
+  // Formula input enter
+  el.formulaInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && state.selectedCell) {
+      commitCellEdit(state.selectedCell.ticker, state.selectedCell.column, el.formulaInput.value);
+    }
+  });
+
+  // Initial Load
+  await loadSpreadsheetData();
+  await loadEDIChart(state.activeChartType);
+}
+
+async function loadSpreadsheetData() {
+  try {
+    const res = await fetch("/api/edi/sheet");
+    if (!res.ok) return;
+    const data = await res.json();
+    state.spreadsheetData = data;
+    renderSpreadsheetGrid(data);
+  } catch (err) {
+    console.error("Spreadsheet load error:", err);
+  }
+}
+
+function renderSpreadsheetGrid(data) {
+  if (!el.spreadsheetGrid || !data) return;
+
+  const colLabels = [
+    { key: "ticker", label: "A: TICKER" },
+    { key: "company_name", label: "B: COMPANY NAME" },
+    { key: "sector", label: "C: SECTOR" },
+    { key: "country", label: "D: CTRY" },
+    { key: "market_cap_b", label: "E: MARKET CAP ($B)" },
+    { key: "revenue_b", label: "F: REVENUE ($B)" },
+    { key: "gross_margin_pct", label: "G: GROSS MARGIN (%)" },
+    { key: "operating_margin_pct", label: "H: OPERATING MARGIN (%)" },
+    { key: "debt_to_equity", label: "I: DEBT/EQUITY" }
+  ];
+
+  let totalCap = 0;
+  let totalMargin = 0;
+  let validMarginCount = 0;
+
+  // Header row
+  let headerHtml = '<thead><tr><th class="col-corner">#</th>';
+  colLabels.forEach(col => {
+    headerHtml += `<th>${col.label}</th>`;
+  });
+  headerHtml += "</tr></thead>";
+
+  // Body rows
+  let bodyHtml = "<tbody>";
+  data.rows.forEach((row, rowIdx) => {
+    const rowNum = rowIdx + 1;
+    totalCap += (row.market_cap_b || 0);
+    if (row.operating_margin_pct > 0) {
+      totalMargin += row.operating_margin_pct;
+      validMarginCount++;
+    }
+
+    bodyHtml += `<tr><td class="row-num">${rowNum}</td>`;
+    colLabels.forEach((col, colIdx) => {
+      const cellVal = row[col.key] !== null && row[col.key] !== undefined ? row[col.key] : "";
+      const colLetter = String.fromCharCode(65 + colIdx);
+      const coord = `${colLetter}${rowNum}`;
+      bodyHtml += `
+        <td class="editable-cell" 
+            data-coord="${coord}" 
+            data-ticker="${row.ticker}" 
+            data-col="${col.key}" 
+            data-val="${cellVal}">
+          ${typeof cellVal === "number" ? cellVal.toLocaleString() : cellVal}
+        </td>
+      `;
+    });
+    bodyHtml += "</tr>";
+  });
+  bodyHtml += "</tbody>";
+
+  el.spreadsheetGrid.innerHTML = headerHtml + bodyHtml;
+
+  // Update Footer stats
+  el.sheetTotalRows.textContent = data.total_rows;
+  el.sheetTotalCap.textContent = `$${(totalCap / 1000).toFixed(1)}T`;
+  const avgMargin = validMarginCount > 0 ? (totalMargin / validMarginCount).toFixed(1) : "0.0";
+  el.sheetAvgMargin.textContent = `${avgMargin}%`;
+
+  // Attach cell click handlers
+  el.spreadsheetGrid.querySelectorAll(".editable-cell").forEach(td => {
+    td.addEventListener("click", () => {
+      el.spreadsheetGrid.querySelectorAll(".cell-selected").forEach(c => c.classList.remove("cell-selected"));
+      td.classList.add("cell-selected");
+      const coord = td.dataset.coord;
+      const val = td.dataset.val;
+      const ticker = td.dataset.ticker;
+      const column = td.dataset.col;
+
+      state.selectedCell = { td, coord, val, ticker, column };
+      el.formulaCoord.textContent = coord;
+      el.formulaInput.value = val;
+    });
+
+    td.addEventListener("dblclick", () => {
+      const currentVal = td.dataset.val;
+      const newVal = prompt(`Edit Cell ${td.dataset.coord}:`, currentVal);
+      if (newVal !== null && newVal !== currentVal) {
+        commitCellEdit(td.dataset.ticker, td.dataset.col, newVal);
+      }
+    });
+  });
+}
+
+async function commitCellEdit(ticker, column, value) {
+  try {
+    const res = await fetch("/api/edi/sheet/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ticker, column, value })
+    });
+    if (!res.ok) throw new Error("Update failed");
+    await loadSpreadsheetData();
+    await loadEDIChart(state.activeChartType);
+  } catch (err) {
+    alert("Error updating cell: " + err.message);
+  }
+}
+
+function exportSpreadsheetCSV() {
+  if (!state.spreadsheetData || !state.spreadsheetData.rows) return;
+  const data = state.spreadsheetData;
+  const csvRows = [data.columns.join(",")];
+
+  data.rows.forEach(r => {
+    const rowVals = data.columns.map(c => `"${r[c] !== undefined ? r[c] : ''}"`);
+    csvRows.push(rowVals.join(","));
+  });
+
+  const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `kuber_financial_cortex_${Date.now()}.csv`;
+  a.click();
+}
+
+async function executeEDIQuery(queryText) {
+  if (!queryText || !queryText.trim()) return;
+
+  el.btnRunEDI.disabled = true;
+  el.btnRunEDI.textContent = "Processing Query...";
+
+  try {
+    const res = await fetch("/api/edi/query", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ natural_query: queryText.trim() })
+    });
+    if (!res.ok) throw new Error("EDI Query Failed");
+    const data = await res.json();
+
+    el.ediAnswerText.textContent = data.natural_language_answer;
+    el.ediLatencyBadge.textContent = `${data.execution_time_ms} ms (${data.grounded_record_count} records)`;
+
+    // If chart returned in response, render it
+    if (data.chart_spec) {
+      renderSvgChart(data.chart_spec);
+    } else {
+      loadEDIChart(state.activeChartType);
+    }
+
+  } catch (err) {
+    el.ediAnswerText.textContent = "Query error: " + err.message;
+  } finally {
+    el.btnRunEDI.disabled = false;
+    el.btnRunEDI.textContent = "Ask EDI";
+  }
+}
+
+/* --- Dynamic SVG / Recharts Visualizer --- */
+async function loadEDIChart(chartType) {
+  try {
+    const res = await fetch(`/api/edi/chart?chart_type=${chartType}`);
+    if (!res.ok) return;
+    const spec = await res.json();
+    renderSvgChart(spec);
+  } catch (err) {
+    console.error("Chart load error:", err);
+  }
+}
+
+function renderSvgChart(spec) {
+  if (!el.chartSvg || !spec) return;
+  el.chartTitle.textContent = spec.title;
+
+  const svg = el.chartSvg;
+  svg.innerHTML = "";
+
+  const width = 380;
+  const height = 320;
+  const margin = { top: 30, right: 20, bottom: 40, left: 45 };
+  const innerW = width - margin.left - margin.right;
+  const innerH = height - margin.top - margin.bottom;
+
+  // Legend
+  if (spec.legend && el.chartLegend) {
+    el.chartLegend.innerHTML = spec.series.map(s => `
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <span style="width: 10px; height: 10px; background: ${s.color}; border-radius: 2px;"></span>
+        <span style="color: var(--text-muted);">${s.name}</span>
+      </div>
+    `).join("");
+  }
+
+  if (spec.chart_type === "RADAR") {
+    renderRadarChart(svg, spec, width, height);
+    return;
+  }
+
+  // Determine Max Value
+  let maxVal = 0;
+  spec.series.forEach(s => {
+    s.data_points.forEach(v => {
+      if (v > maxVal) maxVal = v;
+    });
+  });
+  maxVal = Math.ceil(maxVal * 1.15) || 100;
+
+  // Grid Lines
+  for (let i = 0; i <= 4; i++) {
+    const yVal = Math.round((maxVal / 4) * i);
+    const yPos = margin.top + innerH - (i / 4) * innerH;
+
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("x1", margin.left);
+    line.setAttribute("y1", yPos);
+    line.setAttribute("x2", width - margin.right);
+    line.setAttribute("y2", yPos);
+    line.setAttribute("stroke", "rgba(255,255,255,0.06)");
+    line.setAttribute("stroke-dasharray", "3,3");
+    svg.appendChild(line);
+
+    const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    txt.setAttribute("x", margin.left - 6);
+    txt.setAttribute("y", yPos + 3);
+    txt.setAttribute("fill", "#64748b");
+    txt.setAttribute("font-size", "9");
+    txt.setAttribute("font-family", "ui-monospace");
+    txt.setAttribute("text-anchor", "end");
+    txt.textContent = yVal.toString();
+    svg.appendChild(txt);
+  }
+
+  const categoryCount = spec.x_axis_labels.length;
+  const slotWidth = innerW / Math.max(1, categoryCount);
+
+  if (spec.chart_type === "LINE") {
+    // Render Line Chart
+    spec.series.forEach(s => {
+      const points = [];
+      s.data_points.forEach((val, idx) => {
+        const x = margin.left + idx * slotWidth + slotWidth / 2;
+        const y = margin.top + innerH - (val / maxVal) * innerH;
+        points.push({ x, y, val, label: spec.x_axis_labels[idx] });
+      });
+
+      // Draw Path
+      if (points.length > 0) {
+        let d = `M ${points[0].x} ${points[0].y}`;
+        for (let i = 1; i < points.length; i++) {
+          d += ` L ${points[i].x} ${points[i].y}`;
+        }
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", d);
+        path.setAttribute("fill", "none");
+        path.setAttribute("stroke", s.color);
+        path.setAttribute("stroke-width", "2.5");
+        svg.appendChild(path);
+
+        // Draw Dots
+        points.forEach(pt => {
+          const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          circle.setAttribute("cx", pt.x);
+          circle.setAttribute("cy", pt.y);
+          circle.setAttribute("r", "4.5");
+          circle.setAttribute("fill", s.color);
+          circle.setAttribute("stroke", "#fff");
+          circle.setAttribute("stroke-width", "1.5");
+          circle.style.cursor = "pointer";
+
+          circle.addEventListener("mouseenter", (e) => {
+            el.chartTooltip.style.opacity = "1";
+            el.chartTooltip.style.left = `${e.offsetX + 10}px`;
+            el.chartTooltip.style.top = `${e.offsetY - 25}px`;
+            el.chartTooltip.textContent = `${pt.label}: $${pt.val}B`;
+          });
+          circle.addEventListener("mouseleave", () => {
+            el.chartTooltip.style.opacity = "0";
+          });
+
+          svg.appendChild(circle);
+        });
+      }
+    });
+
+  } else {
+    // Render Grouped Bar Chart
+    const seriesCount = spec.series.length;
+    const barWidth = Math.max(8, (slotWidth - 14) / seriesCount);
+
+    spec.x_axis_labels.forEach((label, cIdx) => {
+      const slotX = margin.left + cIdx * slotWidth;
+
+      spec.series.forEach((s, sIdx) => {
+        const val = s.data_points[cIdx] || 0;
+        const barH = (val / maxVal) * innerH;
+        const x = slotX + 7 + sIdx * barWidth;
+        const y = margin.top + innerH - barH;
+
+        const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        rect.setAttribute("class", "chart-svg-bar");
+        rect.setAttribute("x", x);
+        rect.setAttribute("y", y);
+        rect.setAttribute("width", barWidth - 2);
+        rect.setAttribute("height", Math.max(2, barH));
+        rect.setAttribute("fill", s.color);
+        rect.setAttribute("rx", "2");
+
+        rect.addEventListener("mouseenter", (e) => {
+          el.chartTooltip.style.opacity = "1";
+          el.chartTooltip.style.left = `${e.offsetX + 10}px`;
+          el.chartTooltip.style.top = `${e.offsetY - 25}px`;
+          el.chartTooltip.textContent = `${label} [${s.name}]: ${val}`;
+        });
+        rect.addEventListener("mouseleave", () => {
+          el.chartTooltip.style.opacity = "0";
+        });
+
+        svg.appendChild(rect);
+      });
+
+      // X Label
+      const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      txt.setAttribute("x", slotX + slotWidth / 2);
+      txt.setAttribute("y", height - margin.bottom + 16);
+      txt.setAttribute("fill", "#94a3b8");
+      txt.setAttribute("font-size", "10");
+      txt.setAttribute("font-family", "ui-monospace");
+      txt.setAttribute("text-anchor", "middle");
+      txt.textContent = label;
+      svg.appendChild(txt);
+    });
+  }
+}
+
+function renderRadarChart(svg, spec, width, height) {
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const radius = 100;
+  const sides = spec.x_axis_labels.length;
+
+  // Grid Webs
+  for (let level = 1; level <= 4; level++) {
+    const r = (radius / 4) * level;
+    let pathD = "";
+    for (let i = 0; i < sides; i++) {
+      const angle = (i / sides) * Math.PI * 2 - Math.PI / 2;
+      const x = centerX + Math.cos(angle) * r;
+      const y = centerY + Math.sin(angle) * r;
+      pathD += (i === 0 ? "M " : "L ") + `${x} ${y} `;
+    }
+    pathD += "Z";
+    const web = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    web.setAttribute("d", pathD);
+    web.setAttribute("fill", "none");
+    web.setAttribute("stroke", "rgba(255,255,255,0.08)");
+    web.setAttribute("stroke-dasharray", "2,2");
+    svg.appendChild(web);
+  }
+
+  // Draw Axes and Labels
+  spec.x_axis_labels.forEach((lbl, i) => {
+    const angle = (i / sides) * Math.PI * 2 - Math.PI / 2;
+    const x = centerX + Math.cos(angle) * radius;
+    const y = centerY + Math.sin(angle) * radius;
+
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("x1", centerX);
+    line.setAttribute("y1", centerY);
+    line.setAttribute("x2", x);
+    line.setAttribute("y2", y);
+    line.setAttribute("stroke", "rgba(255,255,255,0.12)");
+    svg.appendChild(line);
+
+    // Label
+    const lx = centerX + Math.cos(angle) * (radius + 20);
+    const ly = centerY + Math.sin(angle) * (radius + 15);
+    const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    txt.setAttribute("x", lx);
+    txt.setAttribute("y", ly);
+    txt.setAttribute("fill", "#94a3b8");
+    txt.setAttribute("font-size", "9");
+    txt.setAttribute("font-family", "ui-monospace");
+    txt.setAttribute("text-anchor", "middle");
+    txt.textContent = lbl.split(" ")[0];
+    svg.appendChild(txt);
+  });
+
+  // Series Polygons
+  spec.series.forEach(s => {
+    let polyD = "";
+    s.data_points.forEach((val, i) => {
+      const angle = (i / sides) * Math.PI * 2 - Math.PI / 2;
+      const normalizedR = Math.min(radius, (val / 3.0) * radius);
+      const x = centerX + Math.cos(angle) * normalizedR;
+      const y = centerY + Math.sin(angle) * normalizedR;
+      polyD += (i === 0 ? "M " : "L ") + `${x} ${y} `;
+    });
+    polyD += "Z";
+
+    const poly = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    poly.setAttribute("d", polyD);
+    poly.setAttribute("fill", s.color + "33");
+    poly.setAttribute("stroke", s.color);
+    poly.setAttribute("stroke-width", "2");
+    svg.appendChild(poly);
+  });
+}
+
+/* =========================================================================
+   WORKSPACE 2: ARLO WEB SCRAPING AUTOMATION
+   ========================================================================= */
+async function initArloScraperWorkspace() {
+  // Load Scraper Workers Telemetry
+  try {
+    const res = await fetch("/api/crawler/workers");
+    if (res.ok) {
+      const workers = await res.json();
+      el.scraperWorkersContainer.innerHTML = workers.map(w => `
+        <div class="worker-node-card">
+          <div class="worker-header">
+            <span style="color: #fff; font-weight: 700;">${w.worker_id.toUpperCase()}</span>
+            <span class="worker-status-active">● ACTIVE</span>
+          </div>
+          <div class="worker-meta-line">
+            <span>${w.region}</span>
+            <span style="color: var(--kuber-gold);">${w.latency_ms} ms</span>
+          </div>
+          <div class="worker-meta-line">
+            <span style="color: var(--text-dim);">${w.type}</span>
+            <span style="color: var(--market-emerald);">${w.uptime_pct}% Uptime</span>
+          </div>
+        </div>
+      `).join("");
+    }
+  } catch (err) {
+    console.error("Worker telemetry error:", err);
+  }
+
+  // Preset selector
+  el.crawlPresetSelect.addEventListener("change", (e) => {
+    if (e.target.value !== "custom") {
+      el.crawlUrlInput.value = e.target.value;
+    }
+  });
+
+  // Execute Crawl
+  el.btnExecuteCrawl.addEventListener("click", async () => {
+    const url = el.crawlUrlInput.value.trim();
+    const strategy = el.pruneStrategySelect.value;
+    if (!url) return;
+
+    el.btnExecuteCrawl.disabled = true;
+    el.btnExecuteCrawl.textContent = "Crawling & Pruning...";
+
+    try {
+      const crawlRes = await fetch("/api/crawler/crawl", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: url, user_agent_mode: "desktop_chrome" })
+      });
+      if (!crawlRes.ok) throw new Error("Crawl failed");
+      const crawlData = await crawlRes.json();
+
+      const pruneRes = await fetch("/api/crawler/prune", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          raw_html: "<html><body>Mock Ingested Content</body></html>",
+          strategy: strategy
+        })
+      });
+      const pruneData = await pruneRes.json();
+
+      el.crawlRawChars.textContent = crawlData.raw_html_length.toLocaleString();
+      el.crawlCleanChars.textContent = pruneData.cleaned_char_count.toLocaleString();
+      el.crawlCompressionBadge.textContent = `${pruneData.compression_ratio_pct}% Compression`;
+      el.crawlMarkdownPreview.innerText = pruneData.markdown_content;
+
+    } catch (err) {
+      alert("Crawler error: " + err.message);
+    } finally {
+      el.btnExecuteCrawl.disabled = false;
+      el.btnExecuteCrawl.textContent = "Ingest & Prune";
+    }
+  });
+
+  // Scrape & Inject To Sheet Action
+  el.btnScrapeToSheet.addEventListener("click", async () => {
+    const url = el.crawlUrlInput.value.trim();
+    if (!url) return;
+
+    el.btnScrapeToSheet.disabled = true;
+    el.btnScrapeToSheet.textContent = "Scraping & Injecting...";
+
+    try {
+      const res = await fetch("/api/crawler/scrape-to-sheet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: url })
+      });
+      if (!res.ok) throw new Error("Scrape to sheet failed");
+      const data = await res.json();
+
+      alert(`✓ Successfully scraped ${data.scraped_url}!\nParsed ${data.cleaned_bytes} bytes (${data.compression_pct}% token compression).\nExtracted ${data.entities_extracted} entities into EDI Spreadsheet.`);
+
+      // Switch to EDI studio tab and refresh sheet
+      const ediTabBtn = document.querySelector('[data-tab="ws-edi-studio"]');
+      if (ediTabBtn) ediTabBtn.click();
+      await loadSpreadsheetData();
+      await loadEDIChart(state.activeChartType);
+
+    } catch (err) {
+      alert("Scrape to sheet error: " + err.message);
+    } finally {
+      el.btnScrapeToSheet.disabled = false;
+      el.btnScrapeToSheet.textContent = "⚡ Scrape & Inject to EDI Sheet";
+    }
+  });
+}
+
+/* =========================================================================
+   WORKSPACE 3: KNOWLEDGE GRAPH & CONTAGION
+   ========================================================================= */
 async function initGraphWorkspace() {
   state.visualizer = new KuberGraphVisualizer("graphCanvas", (node) => {
     renderNodeDetail(node);
@@ -146,22 +736,18 @@ async function initGraphWorkspace() {
     el.btnResetZoom.addEventListener("click", () => state.visualizer.resetZoom());
   }
 
-  // Load Graph Data
   await refreshGraphData();
 
-  // Shortest Path Button
   if (el.btnFindPath) {
     el.btnFindPath.addEventListener("click", executeShortestPath);
   }
 
-  // Shock Magnitude Slider
   if (el.shockMagnitudeSlider) {
     el.shockMagnitudeSlider.addEventListener("input", (e) => {
       el.shockMagnitudeVal.textContent = `${e.target.value}%`;
     });
   }
 
-  // Simulate Shock Button
   if (el.btnSimulateShock) {
     el.btnSimulateShock.addEventListener("click", executeContagionSimulation);
   }
@@ -175,7 +761,6 @@ async function refreshGraphData() {
     state.graphView = data;
     state.visualizer.loadGraphData(data);
 
-    // Populate selectors
     const companyNodes = data.nodes.filter(n => n.type === "COMPANY");
     const optionsHTML = companyNodes.map(n => `<option value="${n.id}">${n.label} (${n.ticker || n.id})</option>`).join("");
 
@@ -186,7 +771,6 @@ async function refreshGraphData() {
     }
     if (el.shockSourceSelect) {
       el.shockSourceSelect.innerHTML = optionsHTML;
-      // Default to TSMC
       const tsmIdx = companyNodes.findIndex(n => n.ticker === "TSM");
       if (tsmIdx !== -1) el.shockSourceSelect.selectedIndex = tsmIdx;
     }
@@ -291,9 +875,10 @@ async function executeContagionSimulation() {
   }
 }
 
-/* --- Workspace 2: Autonomous DAG Orchestrator --- */
+/* =========================================================================
+   WORKSPACE 4: AUTONOMOUS DAG ORCHESTRATOR
+   ========================================================================= */
 async function initDAGWorkspace() {
-  // Load Pipelines
   try {
     const res = await fetch("/api/dag/pipelines");
     if (res.ok) {
@@ -348,11 +933,9 @@ async function executeDAGRun() {
     if (!res.ok) throw new Error("Execution failed");
     const run = await res.json();
 
-    // Stream logs
     el.dagLogStream.innerHTML = run.execution_logs.map(log => `<div>${log}</div>`).join("");
     el.dagLogStream.scrollTop = el.dagLogStream.scrollHeight;
 
-    // Update node states
     for (const [nodeId, state] of Object.entries(run.nodes_state)) {
       const nodeEl = document.getElementById(`dagNode-${nodeId}`);
       const durEl = document.getElementById(`dagDuration-${nodeId}`);
@@ -366,7 +949,6 @@ async function executeDAGRun() {
       }
     }
 
-    // Render Executive Brief if generated
     if (run.run_artifacts && run.run_artifacts.executive_brief) {
       el.dagExecutiveBrief.innerHTML = `
         <div style="border-left: 3px solid var(--kuber-gold); padding-left: 14px;">
@@ -376,8 +958,8 @@ async function executeDAGRun() {
       `;
     }
 
-    // Refresh graph view to pick up newly ingested nodes/relations
     await refreshGraphData();
+    await loadSpreadsheetData();
 
   } catch (err) {
     el.dagLogStream.innerHTML += `<div style="color: var(--contagion-rose);">[ERROR] ${err.message}</div>`;
@@ -387,108 +969,9 @@ async function executeDAGRun() {
   }
 }
 
-/* --- Workspace 3: Crawl4AI Scraper & DOM Pruner --- */
-function initCrawlerWorkspace() {
-  el.btnExecuteCrawl.addEventListener("click", async () => {
-    const url = el.crawlUrlInput.value.trim();
-    const strategy = el.pruneStrategySelect.value;
-    if (!url) return;
-
-    el.btnExecuteCrawl.disabled = true;
-    el.btnExecuteCrawl.textContent = "Crawling & Pruning...";
-
-    try {
-      // Step 1: Crawl
-      const crawlRes = await fetch("/api/crawler/crawl", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url, user_agent_mode: "desktop_chrome" })
-      });
-      if (!crawlRes.ok) throw new Error("Crawl failed");
-      const crawlData = await crawlRes.json();
-
-      // Step 2: Prune
-      const pruneRes = await fetch("/api/crawler/prune", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          raw_html: "<html><body>Mock Ingested Content</body></html>",
-          strategy: strategy
-        })
-      });
-      const pruneData = await pruneRes.json();
-
-      el.crawlRawChars.textContent = crawlData.raw_html_length.toLocaleString();
-      el.crawlCleanChars.textContent = pruneData.cleaned_char_count.toLocaleString();
-      el.crawlCompressionBadge.textContent = `${pruneData.compression_ratio_pct}% Compression`;
-      el.crawlMarkdownPreview.innerText = pruneData.markdown_content;
-
-    } catch (err) {
-      alert("Crawler error: " + err.message);
-    } finally {
-      el.btnExecuteCrawl.disabled = false;
-      el.btnExecuteCrawl.textContent = "Ingest & Prune DOM";
-    }
-  });
-}
-
-/* --- Workspace 4: EDI Natural Language SQL Console --- */
-function initEDIWorkspace() {
-  el.btnRunEDI.addEventListener("click", () => executeEDIQuery(el.ediQueryInput.value));
-
-  el.ediQueryInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") executeEDIQuery(el.ediQueryInput.value);
-  });
-
-  el.quickPromptChips.forEach(chip => {
-    chip.addEventListener("click", () => {
-      const q = chip.dataset.query;
-      el.ediQueryInput.value = q;
-      executeEDIQuery(q);
-    });
-  });
-}
-
-async function executeEDIQuery(queryText) {
-  if (!queryText || !queryText.trim()) return;
-
-  el.btnRunEDI.disabled = true;
-  el.btnRunEDI.textContent = "Synthesizing SQL...";
-
-  try {
-    const res = await fetch("/api/edi/query", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ natural_query: queryText.trim() })
-    });
-    if (!res.ok) throw new Error("EDI Query Failed");
-    const data = await res.json();
-
-    el.ediAnswerText.textContent = data.natural_language_answer;
-    el.ediSqlCode.textContent = data.generated_sql || "-- No SQL synthesized";
-    el.ediCypherCode.textContent = data.generated_cypher || "-- No Graph Cypher required";
-    el.ediLatencyBadge.textContent = `${data.execution_time_ms} ms (${data.grounded_record_count} records)`;
-
-    // Render Data Table
-    if (data.column_headers.length > 0) {
-      el.ediTableHead.innerHTML = `<tr>${data.column_headers.map(c => `<th>${c}</th>`).join("")}</tr>`;
-      el.ediTableBody.innerHTML = data.rows.map(row => `
-        <tr>${data.column_headers.map(c => `<td>${row[c] !== null && row[c] !== undefined ? row[c] : ""}</td>`).join("")}</tr>
-      `).join("");
-    } else {
-      el.ediTableHead.innerHTML = "";
-      el.ediTableBody.innerHTML = '<tr><td style="color: var(--text-dim); text-align: center; padding: 24px;">No records returned</td></tr>';
-    }
-
-  } catch (err) {
-    el.ediAnswerText.textContent = "Query error: " + err.message;
-  } finally {
-    el.btnRunEDI.disabled = false;
-    el.btnRunEDI.textContent = "Ask EDI";
-  }
-}
-
-/* --- Workspace 5: Quantitative Valuation & Altman Z --- */
+/* =========================================================================
+   WORKSPACE 5: QUANTITATIVE VALUATION & ALTMAN Z
+   ========================================================================= */
 function initValuationWorkspace() {
   el.valTickerSelect.addEventListener("change", (e) => {
     state.selectedTicker = e.target.value;
@@ -509,7 +992,6 @@ async function loadValuationReport(ticker) {
     el.valAltmanZone.textContent = report.altman_z.zone.replace("_", " ");
     el.valAltmanInterp.textContent = report.altman_z.clinical_interpretation;
 
-    // Position Altman Pointer (Z-score from 0 to 10 mapped to 0% - 100%)
     const pct = Math.min(96, Math.max(4, (report.altman_z.z_score / 8.0) * 100));
     el.valAltmanPointer.style.left = `${pct}%`;
 
