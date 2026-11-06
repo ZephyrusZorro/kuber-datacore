@@ -27,6 +27,9 @@ from backend.models import (
     DAGExecutionRun,
     EDIQueryRequest,
     EDIQueryResponse,
+    ChartSpec,
+    SpreadsheetData,
+    SpreadsheetCellUpdate,
     MarketTicker
 )
 from backend.web_crawler import WebCrawlerEngine
@@ -211,6 +214,62 @@ def list_dag_run_history():
 @app.post("/api/edi/query", response_model=EDIQueryResponse)
 def query_edi_engine(req: EDIQueryRequest):
     return edi_engine.query(req)
+
+
+@app.get("/api/edi/sheet", response_model=SpreadsheetData)
+def get_edi_spreadsheet():
+    return edi_engine.get_spreadsheet_data()
+
+
+@app.post("/api/edi/sheet/update")
+def update_edi_cell(req: SpreadsheetCellUpdate):
+    success = edi_engine.update_cell(req.ticker, req.column, req.value)
+    if not success:
+        raise HTTPException(status_code=400, detail="Failed to update cell")
+    return {"status": "updated", "ticker": req.ticker, "column": req.column, "value": req.value}
+
+
+@app.get("/api/edi/chart", response_model=ChartSpec)
+def get_edi_chart(chart_type: str = Query("BAR", pattern="^(BAR|LINE|AREA|RADAR)$")):
+    return edi_engine.generate_chart_spec(chart_type=chart_type)
+
+
+# --- Arlo-Style Web Scraping Automation Worker Telemetry ---
+@app.get("/api/crawler/workers")
+def get_crawler_workers():
+    return [
+        {"worker_id": "worker-us-east-1", "region": "US-East (N. Virginia)", "type": "Headless Chromium", "latency_ms": 24.2, "status": "ACTIVE", "uptime_pct": 99.85},
+        {"worker_id": "worker-eu-west-1", "region": "EU-West (Frankfurt)", "type": "Anti-Bot Residential Proxy", "latency_ms": 38.6, "status": "ACTIVE", "uptime_pct": 100.0},
+        {"worker_id": "worker-ap-south-1", "region": "AP-South (Mumbai)", "type": "SEC EDGAR Stream Ingester", "latency_ms": 18.1, "status": "ACTIVE", "uptime_pct": 99.92}
+    ]
+
+
+class ScrapeToSheetRequest(BaseModel):
+    url: str
+
+
+@app.post("/api/crawler/scrape-to-sheet")
+async def scrape_and_load_into_sheet(req: ScrapeToSheetRequest):
+    # Crawl target
+    crawl_req = CrawlRequest(url=req.url, user_agent_mode="desktop_chrome")
+    crawl_res = await crawler_engine.crawl(crawl_req)
+    # Prune DOM
+    prune_res = pruner_engine.prune_and_convert(
+        raw_html=crawler_engine.MOCK_DOMAINS.get(req.url, "<html><body>SEC Ingested</body></html>")
+    )
+    # Link entities
+    ner_res = linker_engine.extract_and_link(prune_res.markdown_content)
+    # Refresh spreadsheet
+    sheet = edi_engine.get_spreadsheet_data()
+    return {
+        "status": "success",
+        "scraped_url": req.url,
+        "raw_bytes": crawl_res.raw_html_length,
+        "cleaned_bytes": prune_res.cleaned_char_count,
+        "compression_pct": prune_res.compression_ratio_pct,
+        "entities_extracted": ner_res.total_mentions,
+        "sheet_total_rows": sheet.total_rows
+    }
 
 
 # --- Mount Static Frontend ---

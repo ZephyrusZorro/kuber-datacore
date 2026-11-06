@@ -306,6 +306,33 @@ class DAGExecutionRun(BaseModel):
     execution_logs: List[str] = Field(default_factory=list)
 
 
+# --- EDI Spreadsheet & Chart Specification Models ---
+class ChartSeries(BaseModel):
+    name: str
+    data_points: List[float] = Field(default_factory=list)
+    color: str = "#facc15"
+
+
+class ChartSpec(BaseModel):
+    chart_type: Literal["BAR", "LINE", "AREA", "RADAR"]
+    title: str
+    x_axis_labels: List[str] = Field(default_factory=list)
+    series: List[ChartSeries] = Field(default_factory=list)
+    legend: List[str] = Field(default_factory=list)
+
+
+class SpreadsheetCellUpdate(BaseModel):
+    ticker: str
+    column: str
+    value: Any
+
+
+class SpreadsheetData(BaseModel):
+    columns: List[str] = Field(default_factory=list)
+    rows: List[Dict[str, Any]] = Field(default_factory=list)
+    total_rows: int = 0
+
+
 # --- Natural Language EDI Query Engine Models ---
 class EDIQueryRequest(BaseModel):
     natural_query: str
@@ -320,6 +347,7 @@ class EDIQueryResponse(BaseModel):
     column_headers: List[str] = Field(default_factory=list)
     rows: List[Dict[str, Any]] = Field(default_factory=list)
     natural_language_answer: str
+    chart_spec: Optional[ChartSpec] = None
     execution_time_ms: float
     grounded_record_count: int
 

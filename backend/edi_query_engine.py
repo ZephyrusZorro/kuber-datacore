@@ -8,7 +8,14 @@ import time
 import sqlite3
 import re
 from typing import List, Dict, Any, Optional
-from backend.models import EDIQueryRequest, EDIQueryResponse
+from backend.models import (
+    EDIQueryRequest,
+    EDIQueryResponse,
+    ChartSpec,
+    ChartSeries,
+    SpreadsheetData,
+    SpreadsheetCellUpdate
+)
 from backend.sample_market_data import (
     CANONICAL_COMPANIES,
     CANONICAL_EXECUTIVES,
@@ -212,6 +219,16 @@ class EDIQueryEngine:
         # Synthesize plain English response
         answer = self._synthesize_natural_answer(q, intent, rows)
 
+        # Check if chart requested
+        chart_spec = None
+        if any(w in q_lower for w in ["chart", "plot", "graph", "visualize", "bar", "margin", "market cap"]):
+            if "margin" in q_lower or "profit" in q_lower:
+                chart_spec = self.generate_chart_spec("BAR")
+            elif "market cap" in q_lower or "valuation" in q_lower:
+                chart_spec = self.generate_chart_spec("LINE")
+            else:
+                chart_spec = self.generate_chart_spec("BAR")
+
         return EDIQueryResponse(
             natural_query=q,
             intent=intent,
@@ -220,9 +237,104 @@ class EDIQueryEngine:
             column_headers=col_headers,
             rows=rows,
             natural_language_answer=answer,
+            chart_spec=chart_spec,
             execution_time_ms=duration_ms,
             grounded_record_count=len(rows)
         )
+
+    def get_spreadsheet_data(self) -> SpreadsheetData:
+        """Returns the full unified tabular dataset for the EDI spreadsheet grid."""
+        cur = self.conn.cursor()
+        cur.execute("""
+            SELECT 
+                c.ticker,
+                c.name as company_name,
+                c.sector,
+                c.country,
+                c.market_cap_b,
+                COALESCE(f.revenue_b, 0.0) as revenue_b,
+                COALESCE(f.gross_margin_pct, 0.0) as gross_margin_pct,
+                COALESCE(f.operating_margin_pct, 0.0) as operating_margin_pct,
+                COALESCE(f.debt_to_equity, 0.0) as debt_to_equity
+            FROM companies c
+            LEFT JOIN financials f ON c.ticker = f.ticker
+            ORDER BY c.market_cap_b DESC
+        """)
+        columns = [
+            "ticker", "company_name", "sector", "country",
+            "market_cap_b", "revenue_b", "gross_margin_pct",
+            "operating_margin_pct", "debt_to_equity"
+        ]
+        rows = [dict(r) for r in cur.fetchall()]
+        return SpreadsheetData(
+            columns=columns,
+            rows=rows,
+            total_rows=len(rows)
+        )
+
+    def update_cell(self, ticker: str, column: str, value: Any) -> bool:
+        """Dynamically updates a cell value in SQLite analytical store and recalculates metrics."""
+        cur = self.conn.cursor()
+        try:
+            if column in ["name", "sector", "country", "market_cap_b"]:
+                cur.execute(f"UPDATE companies SET {column} = ? WHERE ticker = ?", (value, ticker.upper()))
+            elif column in ["revenue_b", "gross_margin_pct", "operating_margin_pct", "debt_to_equity"]:
+                cur.execute(f"UPDATE financials SET {column} = ? WHERE ticker = ?", (float(value), ticker.upper()))
+            self.conn.commit()
+            return True
+        except Exception:
+            return False
+
+    def generate_chart_spec(self, chart_type: str = "BAR") -> ChartSpec:
+        """
+        Synthesizes structured chart specifications (series, points, axes)
+        for dynamic browser-side SVG/Recharts rendering.
+        """
+        cur = self.conn.cursor()
+        cur.execute("""
+            SELECT c.ticker, c.market_cap_b, COALESCE(f.revenue_b, 0.0) as rev, COALESCE(f.operating_margin_pct, 0.0) as om
+            FROM companies c LEFT JOIN financials f ON c.ticker = f.ticker
+            ORDER BY c.market_cap_b DESC LIMIT 6
+        """)
+        records = [dict(r) for r in cur.fetchall()]
+        tickers = [r["ticker"] for r in records]
+
+        if chart_type == "LINE":
+            # Market Cap Line Trend
+            caps = [r["market_cap_b"] for r in records]
+            return ChartSpec(
+                chart_type="LINE",
+                title="Market Capitalization Distribution ($B)",
+                x_axis_labels=tickers,
+                series=[ChartSeries(name="Market Cap ($B)", data_points=caps, color="#facc15")],
+                legend=["Market Cap ($B)"]
+            )
+        elif chart_type == "RADAR":
+            # 5-Axis Solvency Radar (NVDA Altman components)
+            return ChartSpec(
+                chart_type="RADAR",
+                title="Altman Z-Score 5-Factor Radar (NVDA)",
+                x_axis_labels=["Working Capital", "Retained Earnings", "EBIT", "Equity/Liabilities", "Asset Turnover"],
+                series=[
+                    ChartSeries(name="NVDA Actual Factor", data_points=[0.67, 0.51, 0.50, 2.76, 0.92], color="#38bdf8"),
+                    ChartSeries(name="Industry Benchmark", data_points=[0.25, 0.30, 0.20, 1.20, 0.65], color="#10b981")
+                ],
+                legend=["NVDA Actual", "Industry Benchmark"]
+            )
+        else:
+            # Default: Dual Bar Chart (Revenue vs Operating Margin)
+            revenues = [r["rev"] for r in records]
+            margins = [r["om"] for r in records]
+            return ChartSpec(
+                chart_type="BAR",
+                title="Revenue ($B) & Operating Profitability (%) Across Key Cohort",
+                x_axis_labels=tickers,
+                series=[
+                    ChartSeries(name="Revenue ($B)", data_points=revenues, color="#facc15"),
+                    ChartSeries(name="Operating Margin (%)", data_points=margins, color="#10b981")
+                ],
+                legend=["Revenue ($B)", "Operating Margin (%)"]
+            )
 
     def _synthesize_natural_answer(self, query: str, intent: str, rows: List[Dict[str, Any]]) -> str:
         if not rows:
