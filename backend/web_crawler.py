@@ -1,23 +1,23 @@
 """
 Kuber Data Core (कुबेर) — Resilient Async Web Crawler
-User-Agent rotation, rate-limiting simulation, robots.txt awareness,
-and built-in high-fidelity SEC EDGAR & financial market web payloads.
+HTTP fetching and bundled financial documents.
 """
 
 import time
 import re
 import urllib.parse
-from typing import List, Dict, Any, Optional
+from typing import List
 import httpx
 
 from backend.models import CrawlRequest, CrawlResponse
 
 
+class CrawlFetchError(RuntimeError):
+    pass
+
+
 class WebCrawlerEngine:
-    """
-    Production-grade web crawler engine capable of live HTTP fetching with
-    anti-bot evasion headers, link discovery, and resilient fallbacks.
-    """
+    """Fetch HTML and discover links, with bundled documents for offline demos."""
 
     USER_AGENTS = {
         "desktop_chrome": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
@@ -83,91 +83,69 @@ class WebCrawlerEngine:
         """
     }
 
-    def __init__(self):
-        pass
-
-    def get_html_for_url(self, url: str) -> str:
-        """Retrieves raw HTML for a URL matching pre-cached mocks or synthesized fallback."""
-        normalized_url = url.lower().replace("https://", "").replace("http://", "").rstrip("/")
-        for mock_key, mock_html in self.MOCK_DOMAINS.items():
-            if mock_key in normalized_url or normalized_url in mock_key:
-                return mock_html
-        return f"<!DOCTYPE html><html><head><title>{url}</title></head><body><h1>Live Web Target: {url}</h1><p>Autonomous ingestion confirmed for target endpoint {url}. High-density structured SEC EDGAR data loaded.</p></body></html>"
-
     async def crawl(self, req: CrawlRequest) -> CrawlResponse:
         start_time = time.perf_counter()
-        user_agent = self.USER_AGENTS.get(req.user_agent_mode, self.USER_AGENTS["desktop_chrome"])
-        headers = {
-            "User-Agent": user_agent,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9",
-        }
+        url = urllib.parse.urlsplit(req.url)
+        if url.scheme not in {"http", "https"} or not url.hostname:
+            raise ValueError("Enter an HTTP or HTTPS document URL.")
 
-        # Check for simulated offline mock matches first
-        normalized_url = req.url.lower().replace("https://", "").replace("http://", "").rstrip("/")
-        for mock_key, mock_html in self.MOCK_DOMAINS.items():
-            if mock_key in normalized_url or normalized_url in mock_key:
-                latency = round((time.perf_counter() - start_time) * 1000.0, 2)
-                links = self._extract_links(mock_html, req.url) if req.extract_links else []
-                title_match = re.search(r"<title>(.*?)</title>", mock_html, re.IGNORECASE)
-                title = title_match.group(1).strip() if title_match else "Financial Document"
-                return CrawlResponse(
-                    url=req.url,
-                    status_code=200,
-                    content_type="text/html; charset=utf-8",
-                    raw_html_length=len(mock_html),
-                    title=title,
-                    raw_html=mock_html,
-                    extracted_links=links,
-                    fetch_latency_ms=max(12.5, latency),
-                    crawled_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-                )
+        fixture_key = url.netloc.lower() + url.path.rstrip("/")
+        html = self.MOCK_DOMAINS.get(fixture_key)
+        final_url = req.url
+        status_code = 200
+        content_type = "text/html; charset=utf-8"
+        source = "fixture"
 
-        # Attempt live crawl if it looks like an external URL
-        try:
-            async with httpx.AsyncClient(timeout=req.timeout_seconds, follow_redirects=True) as client:
-                resp = await client.get(req.url, headers=headers)
-                latency = round((time.perf_counter() - start_time) * 1000.0, 2)
-                html = resp.text
-                links = self._extract_links(html, req.url) if req.extract_links else []
-                title_match = re.search(r"<title>(.*?)</title>", html, re.IGNORECASE)
-                title = title_match.group(1).strip() if title_match else req.url
+        if html is None:
+            headers = {
+                "User-Agent": self.USER_AGENTS[req.user_agent_mode],
+                "Accept": "text/html,application/xhtml+xml",
+                "Accept-Language": "en-US,en;q=0.9",
+            }
+            try:
+                async with httpx.AsyncClient(timeout=req.timeout_seconds, follow_redirects=True) as client:
+                    response = await client.get(req.url, headers=headers)
+                    response.raise_for_status()
+            except httpx.HTTPStatusError as error:
+                raise CrawlFetchError(f"Source returned HTTP {error.response.status_code}.") from error
+            except httpx.InvalidURL as error:
+                raise ValueError("Enter a valid document URL.") from error
+            except httpx.RequestError as error:
+                raise CrawlFetchError("Could not reach the source URL.") from error
 
-                return CrawlResponse(
-                    url=str(resp.url),
-                    status_code=resp.status_code,
-                    content_type=resp.headers.get("content-type", "text/html"),
-                    raw_html_length=len(html),
-                    title=title,
-                    raw_html=html,
-                    extracted_links=links,
-                    fetch_latency_ms=latency,
-                    crawled_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-                )
-        except Exception:
-            # Fallback to default synthesized market report if live network fails
-            fallback_html = self.MOCK_DOMAINS["reuters.com/tech/semiconductor-supply-chain"]
-            latency = round((time.perf_counter() - start_time) * 1000.0, 2)
-            links = self._extract_links(fallback_html, req.url)
-            return CrawlResponse(
-                url=req.url,
-                status_code=200,
-                content_type="text/html; charset=utf-8",
-                raw_html_length=len(fallback_html),
-                title="Global Semiconductor Supply Chain & Market Cortex Overview",
-                raw_html=fallback_html,
-                extracted_links=links,
-                fetch_latency_ms=max(18.0, latency),
-                crawled_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            )
+            html = response.text
+            final_url = str(response.url)
+            status_code = response.status_code
+            content_type = response.headers.get("content-type", "text/html")
+            source = "web"
+
+        if not html.strip():
+            raise CrawlFetchError("The source returned an empty document.")
+        title = re.search(r"<title>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
+        return CrawlResponse(
+            url=final_url,
+            status_code=status_code,
+            content_type=content_type,
+            raw_html_length=len(html),
+            title=title.group(1).strip() if title else final_url,
+            raw_html=html,
+            extracted_links=self._extract_links(html, final_url) if req.extract_links else [],
+            fetch_latency_ms=round((time.perf_counter() - start_time) * 1000.0, 2),
+            crawled_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            source=source,
+        )
 
     def _extract_links(self, html: str, base_url: str) -> List[str]:
         raw_hrefs = re.findall(r'href=[\'"]([^\'">]+)[\'"]', html, re.IGNORECASE)
         resolved = []
         for h in raw_hrefs:
-            if h.startswith("mailto:") or h.startswith("javascript:") or h.startswith("#"):
+            if h.startswith("#"):
                 continue
-            abs_url = urllib.parse.urljoin(base_url, h)
-            if abs_url not in resolved:
+            try:
+                abs_url = urllib.parse.urljoin(base_url, h)
+                scheme = urllib.parse.urlsplit(abs_url).scheme
+            except ValueError:
+                continue
+            if scheme in {"http", "https"} and abs_url not in resolved:
                 resolved.append(abs_url)
         return resolved[:25]

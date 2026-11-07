@@ -126,8 +126,7 @@ class FinancialRatioEngine:
     def generate_valuation_report(self, ticker: str) -> ValuationReport:
         metrics = FINANCIAL_RECORDS.get(ticker.upper())
         if not metrics:
-            # Fallback to Nvidia metrics if ticker unknown
-            metrics = FINANCIAL_RECORDS["NVDA"]
+            raise LookupError(f"No valuation data for {ticker.upper()}.")
 
         rev = max(0.01, metrics.revenue_billions)
         ta = max(0.01, metrics.total_assets_billions)

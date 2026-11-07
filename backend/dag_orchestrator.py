@@ -244,7 +244,7 @@ class DAGOrchestrator:
             url = params.get("url", "https://sec.gov/edgar/nvda-10k")
             req = CrawlRequest(url=url, user_agent_mode=params.get("user_agent_mode", "desktop_chrome"))
             res = await self.crawler.crawl(req)
-            context["raw_html"] = self.crawler.MOCK_DOMAINS.get("sec.gov/edgar/nvda-10k", "<html><body>Report</body></html>")
+            context["raw_html"] = res.raw_html
             context["crawl_result"] = res.model_dump()
             return f"Fetched {res.raw_html_length} bytes from {res.url} (Status: {res.status_code})"
 

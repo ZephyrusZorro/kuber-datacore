@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from backend.models import (
     CrawlRequest,
     CrawlResponse,
+    FilterStrategy,
     DOMPruneRequest,
     DOMPruneResponse,
     EntityLinkingRequest,
@@ -39,7 +40,7 @@ from backend.models import (
     SpreadsheetCellUpdate,
     MarketTicker
 )
-from backend.web_crawler import WebCrawlerEngine
+from backend.web_crawler import CrawlFetchError, WebCrawlerEngine
 from backend.dom_pruner import DOMPruningEngine
 from backend.entity_linker import EntityLinkingEngine
 from backend.knowledge_graph import KnowledgeGraphEngine
@@ -86,9 +87,9 @@ edi_engine = EDIQueryEngine()
 @app.get("/favicon.ico", include_in_schema=False)
 def get_favicon():
     svg_favicon = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-      <rect width="100" height="100" rx="20" fill="#0b0f19"/>
-      <rect x="5" y="5" width="90" height="90" rx="16" fill="none" stroke="#eab308" stroke-width="4"/>
-      <text x="50" y="68" font-family="'JetBrains Mono', monospace" font-size="52" font-weight="900" fill="#eab308" text-anchor="middle">कु</text>
+      <rect width="100" height="100" rx="24" fill="#35212a"/>
+      <path d="M50 19 77 35v31L50 82 23 66V35l27-16Zm0 63V50m0 0 27-15M50 50 23 35"
+        fill="none" stroke="#f0cbb3" stroke-linejoin="round" stroke-width="4"/>
     </svg>"""
     return Response(content=svg_favicon, media_type="image/svg+xml")
 
@@ -113,12 +114,19 @@ def get_health():
 
 
 # --- Crawler & DOM Pruner Endpoints ---
+async def fetch_document(req: CrawlRequest) -> CrawlResponse:
+    try:
+        return await crawler_engine.crawl(req)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except CrawlFetchError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+
+
 @app.post("/api/crawler/crawl", response_model=CrawlResponse)
 async def crawl_web_page(req: CrawlRequest):
-    res = await crawler_engine.crawl(req)
-    # Automatically prune and save to db
-    raw_html_content = res.raw_html or crawler_engine.get_html_for_url(req.url)
-    prune_res = pruner_engine.prune_and_convert(raw_html=raw_html_content)
+    res = await fetch_document(req)
+    prune_res = pruner_engine.prune_and_convert(raw_html=res.raw_html)
     db.save_crawled_doc(
         url=res.url,
         title=res.title,
@@ -185,7 +193,10 @@ def simulate_supply_chain_contagion(req: ContagionSimulationRequest):
 # --- Financial Ratios & Valuation ---
 @app.get("/api/financials/ratios/{ticker}", response_model=ValuationReport)
 def get_financial_valuation(ticker: str):
-    return ratio_engine.generate_valuation_report(ticker.upper())
+    try:
+        return ratio_engine.generate_valuation_report(ticker)
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
 
 
 @app.get("/api/financials/tickers", response_model=List[MarketTicker])
@@ -263,19 +274,18 @@ def get_crawler_workers():
 
 class ScrapeToSheetRequest(BaseModel):
     url: str
+    strategy: FilterStrategy = FilterStrategy.PRUNING_LXML
+    query_context: Optional[str] = None
 
 
 @app.post("/api/crawler/scrape-to-sheet")
 async def scrape_and_load_into_sheet(req: ScrapeToSheetRequest):
-    # Crawl target
-    crawl_req = CrawlRequest(url=req.url, user_agent_mode="desktop_chrome")
-    crawl_res = await crawler_engine.crawl(crawl_req)
-    # Prune DOM using true scraped HTML
-    raw_html_content = crawl_res.raw_html or crawler_engine.get_html_for_url(req.url)
-    prune_res = pruner_engine.prune_and_convert(raw_html=raw_html_content)
-    # Link entities
+    crawl_res = await fetch_document(CrawlRequest(url=req.url))
+    prune_res = pruner_engine.prune_and_convert(
+        raw_html=crawl_res.raw_html, strategy=req.strategy, query_context=req.query_context
+    )
     ner_res = linker_engine.extract_and_link(prune_res.markdown_content)
-    # Refresh spreadsheet
+    names = list(dict.fromkeys(mention.matched_canonical.name for mention in ner_res.mentions))
     sheet = edi_engine.get_spreadsheet_data()
     return {
         "status": "success",
@@ -284,7 +294,11 @@ async def scrape_and_load_into_sheet(req: ScrapeToSheetRequest):
         "cleaned_bytes": prune_res.cleaned_char_count,
         "compression_pct": prune_res.compression_ratio_pct,
         "entities_extracted": ner_res.total_mentions,
-        "sheet_total_rows": sheet.total_rows
+        "sheet_total_rows": sheet.total_rows,
+        "source": crawl_res.source,
+        "markdown_content": prune_res.markdown_content,
+        "entities": names,
+        "chunks": prune_res.chunks,
     }
 
 

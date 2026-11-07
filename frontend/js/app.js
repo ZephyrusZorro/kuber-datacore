@@ -1,1079 +1,666 @@
-/**
- * Kuber Data Core (कुबेर) — Main Frontend Workstation Controller
- * EDI Interactive Spreadsheet & Recharts Studio, Arlo Web Scraping Automation,
- * Knowledge Graph & Contagion Shock Engine, Autonomous DAG Runner, and Valuation Matrix.
- */
+"use strict";
 
-// Global State
-const state = {
-  currentTab: "ws-edi-studio",
-  activeChartType: "BAR",
-  selectedCell: null,
-  spreadsheetData: null,
-  graphView: null,
-  visualizer: null,
-  selectedNode: null,
-  activePipelineId: "financial-cortex-e2e",
-  selectedTicker: "NVDA"
-};
+const byId = id => document.getElementById(id);
+const text = (id, value) => { byId(id).textContent = value ?? "—"; };
+const svgNS = "http://www.w3.org/2000/svg";
+let toastTimer;
 
-// DOM Element Registry
-const el = {};
+function element(tag, label, className) {
+  const item = document.createElement(tag);
+  if (label != null) item.textContent = label;
+  if (className) item.className = className;
+  return item;
+}
+
+async function api(path, body) {
+  const response = await fetch(path, body === undefined ? undefined : {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok || data === null) {
+    const detail = typeof data?.detail === "string" ? data.detail : "Request failed (" + response.status + ")";
+    throw new Error(detail);
+  }
+  return data;
+}
 
 function showToast(message, type = "success") {
-  const toast = document.getElementById("kuberToast");
-  if (!toast) return;
+  const toast = byId("kuberToast");
   toast.textContent = message;
-  toast.style.borderColor = type === "error" ? "var(--contagion-rose, #f43f5e)" : "var(--kuber-gold, #eab308)";
-  toast.style.color = type === "error" ? "#fca5a5" : "#fef08a";
-  toast.style.display = "block";
-  clearTimeout(toast._timeout);
-  toast._timeout = setTimeout(() => {
-    toast.style.display = "none";
-  }, 4500);
+  toast.dataset.type = type;
+  toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toast.hidden = true; }, 4500);
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  initElementRegistry();
-  initNavigationTabs();
-  initMarketTickerTape();
-  initEDIStudio();
-  initArloScraperWorkspace();
-  initGraphWorkspace();
-  initDAGWorkspace();
-  initValuationWorkspace();
-});
-
-function initElementRegistry() {
-  el.tabBtns = document.querySelectorAll(".ws-tab-btn");
-  el.panels = document.querySelectorAll(".workspace-panel");
-  el.tickerTapeTrack = document.getElementById("tickerTapeTrack");
-
-  // EDI Elements
-  el.ediQueryInput = document.getElementById("ediQueryInput");
-  el.btnRunEDI = document.getElementById("btnRunEDI");
-  el.ediAnswerText = document.getElementById("ediAnswerText");
-  el.ediLatencyBadge = document.getElementById("ediLatencyBadge");
-  el.quickPromptChips = document.querySelectorAll(".quick-prompt-chip");
-  el.spreadsheetGrid = document.getElementById("spreadsheetGrid");
-  el.formulaCoord = document.getElementById("formulaCoord");
-  el.formulaInput = document.getElementById("formulaInput");
-  el.btnRefreshSheet = document.getElementById("btnRefreshSheet");
-  el.btnExportCSV = document.getElementById("btnExportCSV");
-  el.sheetTotalRows = document.getElementById("sheetTotalRows");
-  el.sheetTotalCap = document.getElementById("sheetTotalCap");
-  el.sheetAvgMargin = document.getElementById("sheetAvgMargin");
-
-  // Chart Elements
-  el.chartPillBtns = document.querySelectorAll(".chart-pill-btn");
-  el.chartTitle = document.getElementById("chartTitle");
-  el.chartSvg = document.getElementById("chartSvg");
-  el.chartTooltip = document.getElementById("chartTooltip");
-  el.chartLegend = document.getElementById("chartLegend");
-
-  // Arlo Scraper Elements
-  el.scraperWorkersContainer = document.getElementById("scraperWorkersContainer");
-  el.crawlPresetSelect = document.getElementById("crawlPresetSelect");
-  el.crawlUrlInput = document.getElementById("crawlUrlInput");
-  el.pruneStrategySelect = document.getElementById("pruneStrategySelect");
-  el.btnExecuteCrawl = document.getElementById("btnExecuteCrawl");
-  el.btnScrapeToSheet = document.getElementById("btnScrapeToSheet");
-  el.crawlRawChars = document.getElementById("crawlRawChars");
-  el.crawlCleanChars = document.getElementById("crawlCleanChars");
-  el.crawlCompressionBadge = document.getElementById("crawlCompressionBadge");
-  el.crawlMarkdownPreview = document.getElementById("crawlMarkdownPreview");
-
-  // Graph Elements
-  el.graphNodeDetail = document.getElementById("graphNodeDetail");
-  el.pathSourceSelect = document.getElementById("pathSourceSelect");
-  el.pathTargetSelect = document.getElementById("pathTargetSelect");
-  el.btnFindPath = document.getElementById("btnFindPath");
-  el.pathResultBox = document.getElementById("pathResultBox");
-  el.shockSourceSelect = document.getElementById("shockSourceSelect");
-  el.shockMagnitudeSlider = document.getElementById("shockMagnitudeSlider");
-  el.shockMagnitudeVal = document.getElementById("shockMagnitudeVal");
-  el.btnSimulateShock = document.getElementById("btnSimulateShock");
-  el.shockResultBox = document.getElementById("shockResultBox");
-  el.btnResetZoom = document.getElementById("btnResetZoom");
-
-  // DAG Elements
-  el.dagPipelineSelect = document.getElementById("dagPipelineSelect");
-  el.btnRunDAG = document.getElementById("btnRunDAG");
-  el.dagFlowSteps = document.getElementById("dagFlowSteps");
-  el.dagLogStream = document.getElementById("dagLogStream");
-  el.dagExecutiveBrief = document.getElementById("dagExecutiveBrief");
-
-  // Valuation Elements
-  el.valTickerSelect = document.getElementById("valTickerSelect");
-  el.valHealthGrade = document.getElementById("valHealthGrade");
-  el.valAltmanScore = document.getElementById("valAltmanScore");
-  el.valAltmanZone = document.getElementById("valAltmanZone");
-  el.valAltmanPointer = document.getElementById("valAltmanPointer");
-  el.valAltmanInterp = document.getElementById("valAltmanInterp");
-  el.valBeneishScore = document.getElementById("valBeneishScore");
-  el.valBeneishRisk = document.getElementById("valBeneishRisk");
-  el.valGrossMargin = document.getElementById("valGrossMargin");
-  el.valOperatingMargin = document.getElementById("valOperatingMargin");
-  el.valCurrentRatio = document.getElementById("valCurrentRatio");
-  el.valDebtEquity = document.getElementById("valDebtEquity");
-  el.valPeRatio = document.getElementById("valPeRatio");
-}
-
-/* --- Navigation --- */
-function initNavigationTabs() {
-  el.tabBtns.forEach(btn => {
-    btn.addEventListener("click", () => {
-      const targetId = btn.dataset.tab;
-      el.tabBtns.forEach(b => b.classList.remove("active"));
-      el.panels.forEach(p => p.classList.remove("active"));
-
-      btn.classList.add("active");
-      const targetPanel = document.getElementById(targetId);
-      if (targetPanel) targetPanel.classList.add("active");
-      state.currentTab = targetId;
-
-      if (targetId === "ws-graph" && state.visualizer) {
-        state.visualizer._setupCanvasSize();
-        setTimeout(() => state.visualizer._setupCanvasSize(), 50);
-        setTimeout(() => state.visualizer._setupCanvasSize(), 180);
-      }
-    });
-  });
-}
-
-/* --- Live Market Ticker Tape --- */
-async function initMarketTickerTape() {
+async function runAction(button, pendingLabel, action) {
+  if (button.disabled) return;
+  const content = [...button.childNodes];
+  button.disabled = true;
+  button.textContent = pendingLabel;
   try {
-    const res = await fetch("/api/financials/tickers");
-    if (!res.ok) return;
-    const tickers = await res.json();
-
-    const tickerHTML = tickers.map(t => {
-      const isUp = t.change_dollar >= 0;
-      const sign = isUp ? "+" : "";
-      const cssClass = isUp ? "ticker-up" : "ticker-down";
-      return `
-        <div class="ticker-item">
-          <span class="ticker-symbol">${t.ticker}</span>
-          <span class="ticker-price">$${t.price.toFixed(2)}</span>
-          <span class="${cssClass}">${sign}${t.change_pct.toFixed(2)}%</span>
-        </div>
-      `;
-    }).join("");
-
-    el.tickerTapeTrack.innerHTML = tickerHTML + tickerHTML;
-  } catch (err) {
-    console.error("Ticker tape fetch failed:", err);
-  }
-}
-
-/* =========================================================================
-   WORKSPACE 1: EDI SPREADSHEET & RECHARTS STUDIO
-   ========================================================================= */
-async function initEDIStudio() {
-  // Query Input
-  el.btnRunEDI.addEventListener("click", () => executeEDIQuery(el.ediQueryInput.value));
-  el.ediQueryInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") executeEDIQuery(el.ediQueryInput.value);
-  });
-
-  el.quickPromptChips.forEach(chip => {
-    chip.addEventListener("click", () => {
-      const q = chip.dataset.query;
-      el.ediQueryInput.value = q;
-      executeEDIQuery(q);
-    });
-  });
-
-  // Chart Type Pills
-  el.chartPillBtns.forEach(btn => {
-    btn.addEventListener("click", () => {
-      el.chartPillBtns.forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      state.activeChartType = btn.dataset.chart;
-      loadEDIChart(state.activeChartType);
-    });
-  });
-
-  // Toolbar Actions
-  el.btnRefreshSheet.addEventListener("click", loadSpreadsheetData);
-  el.btnExportCSV.addEventListener("click", exportSpreadsheetCSV);
-
-  // Formula input enter
-  el.formulaInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && state.selectedCell) {
-      commitCellEdit(state.selectedCell.ticker, state.selectedCell.column, el.formulaInput.value);
-    }
-  });
-
-  // Initial Load
-  await loadSpreadsheetData();
-  await loadEDIChart(state.activeChartType);
-}
-
-async function loadSpreadsheetData() {
-  try {
-    const res = await fetch("/api/edi/sheet");
-    if (!res.ok) return;
-    const data = await res.json();
-    state.spreadsheetData = data;
-    renderSpreadsheetGrid(data);
-  } catch (err) {
-    console.error("Spreadsheet load error:", err);
-  }
-}
-
-function renderSpreadsheetGrid(data) {
-  if (!el.spreadsheetGrid || !data) return;
-
-  const colLabels = [
-    { key: "ticker", label: "A: TICKER" },
-    { key: "company_name", label: "B: COMPANY NAME" },
-    { key: "sector", label: "C: SECTOR" },
-    { key: "country", label: "D: CTRY" },
-    { key: "market_cap_b", label: "E: MARKET CAP ($B)" },
-    { key: "revenue_b", label: "F: REVENUE ($B)" },
-    { key: "gross_margin_pct", label: "G: GROSS MARGIN (%)" },
-    { key: "operating_margin_pct", label: "H: OPERATING MARGIN (%)" },
-    { key: "debt_to_equity", label: "I: DEBT/EQUITY" }
-  ];
-
-  let totalCap = 0;
-  let totalMargin = 0;
-  let validMarginCount = 0;
-
-  // Header row
-  let headerHtml = '<thead><tr><th class="col-corner">#</th>';
-  colLabels.forEach(col => {
-    headerHtml += `<th>${col.label}</th>`;
-  });
-  headerHtml += "</tr></thead>";
-
-  // Body rows
-  let bodyHtml = "<tbody>";
-  data.rows.forEach((row, rowIdx) => {
-    const rowNum = rowIdx + 1;
-    totalCap += (row.market_cap_b || 0);
-    if (row.operating_margin_pct > 0) {
-      totalMargin += row.operating_margin_pct;
-      validMarginCount++;
-    }
-
-    bodyHtml += `<tr><td class="row-num">${rowNum}</td>`;
-    colLabels.forEach((col, colIdx) => {
-      const cellVal = row[col.key] !== null && row[col.key] !== undefined ? row[col.key] : "";
-      const colLetter = String.fromCharCode(65 + colIdx);
-      const coord = `${colLetter}${rowNum}`;
-      bodyHtml += `
-        <td class="editable-cell" 
-            data-coord="${coord}" 
-            data-ticker="${row.ticker}" 
-            data-col="${col.key}" 
-            data-val="${cellVal}">
-          ${typeof cellVal === "number" ? cellVal.toLocaleString() : cellVal}
-        </td>
-      `;
-    });
-    bodyHtml += "</tr>";
-  });
-  bodyHtml += "</tbody>";
-
-  el.spreadsheetGrid.innerHTML = headerHtml + bodyHtml;
-
-  // Update Footer stats
-  el.sheetTotalRows.textContent = data.total_rows;
-  el.sheetTotalCap.textContent = `$${(totalCap / 1000).toFixed(1)}T`;
-  const avgMargin = validMarginCount > 0 ? (totalMargin / validMarginCount).toFixed(1) : "0.0";
-  el.sheetAvgMargin.textContent = `${avgMargin}%`;
-
-  // Attach cell click handlers
-  el.spreadsheetGrid.querySelectorAll(".editable-cell").forEach(td => {
-    td.addEventListener("click", () => {
-      el.spreadsheetGrid.querySelectorAll(".cell-selected").forEach(c => c.classList.remove("cell-selected"));
-      td.classList.add("cell-selected");
-      const coord = td.dataset.coord;
-      const val = td.dataset.val;
-      const ticker = td.dataset.ticker;
-      const column = td.dataset.col;
-
-      state.selectedCell = { td, coord, val, ticker, column };
-      el.formulaCoord.textContent = coord;
-      el.formulaInput.value = val;
-    });
-
-    td.addEventListener("dblclick", () => {
-      const currentVal = td.dataset.val;
-      const newVal = prompt(`Edit Cell ${td.dataset.coord}:`, currentVal);
-      if (newVal !== null && newVal !== currentVal) {
-        commitCellEdit(td.dataset.ticker, td.dataset.col, newVal);
-      }
-    });
-  });
-
-  // Auto-select first cell if none selected
-  if (!state.selectedCell) {
-    const firstCell = el.spreadsheetGrid.querySelector(".editable-cell");
-    if (firstCell) {
-      firstCell.click();
-    }
-  }
-}
-
-async function commitCellEdit(ticker, column, value) {
-  try {
-    const res = await fetch("/api/edi/sheet/update", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ticker, column, value })
-    });
-    if (!res.ok) throw new Error("Update failed");
-    await loadSpreadsheetData();
-    await loadEDIChart(state.activeChartType);
-    showToast(`✓ Updated ${ticker} [${column}] = ${value}`);
-  } catch (err) {
-    showToast("Error updating cell: " + err.message, "error");
-  }
-}
-
-function exportSpreadsheetCSV() {
-  if (!state.spreadsheetData || !state.spreadsheetData.rows) return;
-  const data = state.spreadsheetData;
-  const csvRows = [data.columns.join(",")];
-
-  data.rows.forEach(r => {
-    const rowVals = data.columns.map(c => `"${r[c] !== undefined ? r[c] : ''}"`);
-    csvRows.push(rowVals.join(","));
-  });
-
-  const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `kuber_financial_cortex_${Date.now()}.csv`;
-  a.click();
-}
-
-async function executeEDIQuery(queryText) {
-  if (!queryText || !queryText.trim()) return;
-
-  el.btnRunEDI.disabled = true;
-  el.btnRunEDI.textContent = "Processing Query...";
-
-  try {
-    const res = await fetch("/api/edi/query", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ natural_query: queryText.trim() })
-    });
-    if (!res.ok) throw new Error("EDI Query Failed");
-    const data = await res.json();
-
-    el.ediAnswerText.textContent = data.natural_language_answer;
-    el.ediLatencyBadge.textContent = `${data.execution_time_ms} ms (${data.grounded_record_count} records)`;
-
-    // If chart returned in response, render it
-    if (data.chart_spec) {
-      renderSvgChart(data.chart_spec);
-    } else {
-      loadEDIChart(state.activeChartType);
-    }
-
-  } catch (err) {
-    el.ediAnswerText.textContent = "Query error: " + err.message;
+    await action();
+  } catch (error) {
+    showToast(error.message, "error");
   } finally {
-    el.btnRunEDI.disabled = false;
-    el.btnRunEDI.textContent = "Ask EDI";
+    button.replaceChildren(...content);
+    button.disabled = false;
   }
 }
 
-/* --- Dynamic SVG / Recharts Visualizer --- */
-async function loadEDIChart(chartType) {
+const tabs = [...document.querySelectorAll(".ws-tab-btn")];
+const panels = [...document.querySelectorAll(".workspace-panel")];
+let activeTab;
+let visualizer;
+
+function activateWorkspace(scroll = false) {
+  const tab = tabs.find(item => "#" + item.dataset.tab === location.hash) || tabs[0];
+  if (activeTab === tab) return;
+  activeTab = tab;
+  for (const item of tabs) {
+    const selected = item === tab;
+    item.classList.toggle("active", selected);
+    if (selected) item.setAttribute("aria-current", "page");
+    else item.removeAttribute("aria-current");
+  }
+  for (const panel of panels) panel.classList.toggle("active", panel.id === tab.dataset.tab);
+  text("workspaceName", tab.querySelector("span").textContent);
+  if (scroll) window.scrollTo(0, 0);
+  if (tab.dataset.tab === "ws-graph") visualizer?._setupCanvasSize();
+}
+
+async function loadSnapshot() {
+  const [health, tickers] = await Promise.allSettled([api("/api/health"), api("/api/financials/tickers")]);
+  const online = health.status === "fulfilled" && health.value.status === "healthy";
+  byId("serviceStatus").parentElement.dataset.online = String(online);
+  text("serviceStatus", online ? "Local engine online" : "Local engine unavailable");
+  if (tickers.status !== "fulfilled") {
+    text("tickerTapeTrack", "Snapshot unavailable");
+    return;
+  }
+  const items = tickers.value.map(ticker => {
+    const item = element("div", null, "ticker-item");
+    const direction = ticker.change_pct >= 0 ? "ticker-up" : "ticker-down";
+    const change = (ticker.change_pct >= 0 ? "+" : "") + ticker.change_pct.toFixed(2) + "%";
+    item.append(element("span", ticker.ticker, "ticker-symbol"), element("span", "$" + ticker.price.toFixed(2)), element("span", change, direction));
+    return item;
+  });
+  byId("tickerTapeTrack").replaceChildren(...items);
+  fillSelect("valTickerSelect", tickers.value.map(ticker => [ticker.ticker, ticker.name + " · " + ticker.ticker]), "NVDA");
+  loadValuation();
+}
+
+const headings = {
+  ticker: "Ticker", company_name: "Company", sector: "Sector", country: "Country",
+  market_cap_b: "Market cap ($B)", revenue_b: "Revenue ($B)", gross_margin_pct: "Gross margin (%)",
+  operating_margin_pct: "Op. margin (%)", debt_to_equity: "Debt / equity"
+};
+let worksheet;
+let selectedCell;
+let sheetRequest = 0;
+let savingCell = false;
+let activeChartType = "BAR";
+let chartRequest = 0;
+
+function selectCell(cell) {
+  const previous = byId("spreadsheetGrid").querySelector(".cell-selected");
+  if (previous) {
+    previous.classList.remove("cell-selected");
+    previous.tabIndex = -1;
+    previous.setAttribute("aria-selected", "false");
+  }
+  selectedCell = cell;
+  cell.classList.add("cell-selected");
+  cell.tabIndex = 0;
+  cell.setAttribute("aria-selected", "true");
+  text("formulaCoord", cell.dataset.coord);
+  const input = byId("formulaInput");
+  input.value = cell.dataset.value;
+  input.disabled = savingCell || cell.dataset.column === "ticker";
+  input.placeholder = cell.dataset.column === "ticker" ? "Ticker is a row identifier" : "Enter a value";
+}
+
+function buildTable(columns, rows, isWorksheet = false) {
+  const head = element("thead");
+  const header = element("tr");
+  if (isWorksheet) header.append(element("th", "#", "col-corner"));
+  for (const column of columns) {
+    const cell = element("th", headings[column] || column.replaceAll("_", " "));
+    cell.scope = "col";
+    header.append(cell);
+  }
+  head.append(header);
+  const body = element("tbody");
+  rows.forEach((row, rowIndex) => {
+    const line = element("tr");
+    if (isWorksheet) line.append(element("td", rowIndex + 1, "row-num"));
+    columns.forEach((column, columnIndex) => {
+      const value = row[column];
+      const cell = element("td", typeof value === "number" ? value.toLocaleString("en-US") : value ?? "—");
+      if (isWorksheet) {
+        cell.className = "editable-cell";
+        cell.tabIndex = -1;
+        cell.dataset.ticker = row.ticker;
+        cell.dataset.column = column;
+        cell.dataset.col = column;
+        cell.dataset.value = value ?? "";
+        cell.dataset.coord = String.fromCharCode(65 + columnIndex) + (rowIndex + 1);
+        cell.setAttribute("role", "gridcell");
+        cell.setAttribute("aria-selected", "false");
+        cell.setAttribute("aria-readonly", String(column === "ticker"));
+      }
+      line.append(cell);
+    });
+    body.append(line);
+  });
+  return [head, body];
+}
+
+async function loadWorksheet() {
+  const request = ++sheetRequest;
+  const data = await api("/api/edi/sheet");
+  if (request !== sheetRequest) return;
+  worksheet = data;
+  const grid = byId("spreadsheetGrid");
+  const previous = selectedCell?.dataset;
+  grid.replaceChildren(...buildTable(data.columns, data.rows, true));
+  const cells = [...grid.querySelectorAll(".editable-cell")];
+  const restored = cells.find(cell => cell.dataset.ticker === previous?.ticker && cell.dataset.column === previous?.column);
+  const initial = restored || cells.find(cell => cell.dataset.column === "company_name") || cells[0];
+  selectedCell = null;
+  if (initial) selectCell(initial);
+  else byId("formulaInput").disabled = true;
+  const total = data.rows.reduce((sum, row) => sum + (row.market_cap_b ?? 0), 0);
+  const margins = data.rows.map(row => row.operating_margin_pct).filter(Number.isFinite);
+  text("sheetTotalRows", data.total_rows);
+  text("sheetTotalCap", "$" + (total / 1000).toFixed(1) + "T");
+  text("sheetAvgMargin", margins.length ? (margins.reduce((a, b) => a + b, 0) / margins.length).toFixed(1) + "%" : "—");
+}
+
+async function saveCell() {
+  if (savingCell || !selectedCell || selectedCell.dataset.column === "ticker") return;
+  const { ticker, column } = selectedCell.dataset;
+  const value = byId("formulaInput").value;
+  savingCell = true;
+  byId("formulaInput").disabled = true;
+  byId("btnRefreshSheet").disabled = true;
   try {
-    const res = await fetch(`/api/edi/chart?chart_type=${chartType}`);
-    if (!res.ok) return;
-    const spec = await res.json();
-    renderSvgChart(spec);
-  } catch (err) {
-    console.error("Chart load error:", err);
+    await api("/api/edi/sheet/update", { ticker, column, value });
+    await loadWorksheet();
+    showToast(ticker + " " + headings[column] + " saved.");
+    await loadChart(activeChartType);
+  } catch (error) {
+    showToast(error.message, "error");
+  } finally {
+    savingCell = false;
+    byId("formulaInput").disabled = !selectedCell || selectedCell.dataset.column === "ticker";
+    byId("btnRefreshSheet").disabled = false;
   }
 }
 
-function renderSvgChart(spec) {
-  if (!el.chartSvg || !spec) return;
-  el.chartTitle.textContent = spec.title;
-
-  const svg = el.chartSvg;
-  svg.innerHTML = "";
-
-  const width = 380;
-  const height = 320;
-  const margin = { top: 30, right: 20, bottom: 40, left: 45 };
-  const innerW = width - margin.left - margin.right;
-  const innerH = height - margin.top - margin.bottom;
-
-  // Legend
-  if (spec.legend && el.chartLegend) {
-    el.chartLegend.innerHTML = spec.series.map(s => `
-      <div style="display: flex; align-items: center; gap: 6px;">
-        <span style="width: 10px; height: 10px; background: ${s.color}; border-radius: 2px;"></span>
-        <span style="color: var(--text-muted);">${s.name}</span>
-      </div>
-    `).join("");
+function exportCsv() {
+  if (!worksheet) return;
+  function encode(value) {
+    let field = String(value ?? "");
+    if (typeof value === "string" && /^[\s]*[=+@-]/.test(field)) field = "'" + field;
+    return '"' + field.replaceAll('"', '""') + '"';
   }
+  const lines = [worksheet.columns.map(encode).join(",")];
+  for (const row of worksheet.rows) lines.push(worksheet.columns.map(column => encode(row[column])).join(","));
+  const url = URL.createObjectURL(new Blob([lines.join("\r\n")], { type: "text/csv;charset=utf-8" }));
+  const link = element("a");
+  link.href = url;
+  link.download = "kuber-company-fundamentals.csv";
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
+async function executeQuery() {
+  const query = byId("ediQueryInput").value.trim();
+  if (!query) return;
+  await runAction(byId("btnRunEDI"), "Running…", async () => {
+    const request = ++chartRequest;
+    byId("ediAnswerCard").hidden = false;
+    byId("queryDetails").hidden = true;
+    text("ediAnswerText", "Looking up matching records…");
+    try {
+      const result = await api("/api/edi/query", { natural_query: query });
+      text("ediAnswerText", result.natural_language_answer);
+      text("ediLatencyBadge", result.execution_time_ms + " ms · " + result.grounded_record_count + " records");
+      text("querySql", [result.generated_sql, result.generated_cypher].filter(Boolean).join("\n\n"));
+      const table = element("table", null, "query-record-table");
+      table.append(...buildTable(result.column_headers, result.rows));
+      byId("queryRecords").replaceChildren(table);
+      byId("queryDetails").hidden = !result.generated_sql && !result.rows.length;
+      byId("queryDetails").open = false;
+      if (request === chartRequest) {
+        if (result.chart_spec) renderChart(result.chart_spec);
+        else await loadChart(activeChartType);
+      }
+    } catch (error) {
+      text("ediAnswerText", error.message);
+      text("ediLatencyBadge", "Query failed");
+    }
+  });
+}
+
+function svgElement(tag, attributes, label) {
+  const node = document.createElementNS(svgNS, tag);
+  for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value);
+  if (label != null) node.textContent = label;
+  return node;
+}
+
+function chartTooltip(node, label) {
+  node.append(svgElement("title", {}, label));
+  node.addEventListener("pointerenter", event => {
+    const tooltip = byId("chartTooltip");
+    const bounds = tooltip.parentElement.getBoundingClientRect();
+    tooltip.textContent = label;
+    tooltip.style.left = Math.max(5, Math.min(event.clientX - bounds.left + 8, bounds.width - tooltip.offsetWidth - 5)) + "px";
+    tooltip.style.top = Math.max(3, event.clientY - bounds.top - 32) + "px";
+    tooltip.style.opacity = "1";
+  });
+  node.addEventListener("pointerleave", () => { byId("chartTooltip").style.opacity = "0"; });
+}
+
+function renderChart(spec) {
+  const svg = byId("chartSvg");
+  svg.replaceChildren();
+  byId("chartTooltip").style.opacity = "0";
+  text("chartTitle", spec.title);
+  const palette = ["#a34f3c", "#397665", "#78546a"];
+  const legend = spec.series.map((series, index) => {
+    const entry = element("span", series.name);
+    entry.style.color = palette[index % palette.length];
+    return entry;
+  });
+  byId("chartLegend").replaceChildren(...legend);
+  for (const button of document.querySelectorAll(".chart-pill-btn")) {
+    const selected = button.dataset.chart === spec.chart_type;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  }
+  activeChartType = spec.chart_type;
+  if (!spec.x_axis_labels.length || !spec.series.length) return;
   if (spec.chart_type === "RADAR") {
-    renderRadarChart(svg, spec, width, height);
+    renderRadar(svg, spec, palette);
     return;
   }
 
-  // Determine Max Value
-  let maxVal = 0;
-  spec.series.forEach(s => {
-    s.data_points.forEach(v => {
-      if (v > maxVal) maxVal = v;
-    });
-  });
-  maxVal = Math.ceil(maxVal * 1.15) || 100;
-
-  // Grid Lines
-  for (let i = 0; i <= 4; i++) {
-    const yVal = Math.round((maxVal / 4) * i);
-    const yPos = margin.top + innerH - (i / 4) * innerH;
-
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    line.setAttribute("x1", margin.left);
-    line.setAttribute("y1", yPos);
-    line.setAttribute("x2", width - margin.right);
-    line.setAttribute("y2", yPos);
-    line.setAttribute("stroke", "rgba(255,255,255,0.06)");
-    line.setAttribute("stroke-dasharray", "3,3");
-    svg.appendChild(line);
-
-    const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    txt.setAttribute("x", margin.left - 6);
-    txt.setAttribute("y", yPos + 3);
-    txt.setAttribute("fill", "#64748b");
-    txt.setAttribute("font-size", "9");
-    txt.setAttribute("font-family", "ui-monospace");
-    txt.setAttribute("text-anchor", "end");
-    txt.textContent = yVal.toString();
-    svg.appendChild(txt);
+  const values = spec.series.flatMap(series => series.data_points);
+  const minimum = Math.min(0, ...values);
+  const maximum = Math.max(0, ...values);
+  const range = maximum - minimum || 1;
+  const x0 = 43;
+  const chartWidth = 323;
+  const y = value => 255 - (value - minimum) / range * 205;
+  const slot = chartWidth / spec.x_axis_labels.length;
+  const step = range / 4;
+  for (let index = 0; index <= 4; index++) {
+    const value = minimum + index * step;
+    svg.append(svgElement("line", { x1: x0, x2: 366, y1: y(value), y2: y(value), stroke: "#dfcfc2", "stroke-dasharray": "3 3" }));
+    svg.append(svgElement("text", { x: x0 - 6, y: y(value) + 3, fill: "#786761", "font-size": 9, "text-anchor": "end" }, value.toLocaleString("en-US", { maximumFractionDigits: 1 })));
   }
-
-  const categoryCount = spec.x_axis_labels.length;
-  const slotWidth = innerW / Math.max(1, categoryCount);
-
-  if (spec.chart_type === "LINE") {
-    // Render Line Chart
-    spec.series.forEach(s => {
-      const points = [];
-      s.data_points.forEach((val, idx) => {
-        const x = margin.left + idx * slotWidth + slotWidth / 2;
-        const y = margin.top + innerH - (val / maxVal) * innerH;
-        points.push({ x, y, val, label: spec.x_axis_labels[idx] });
-      });
-
-      // Draw Path
-      if (points.length > 0) {
-        let d = `M ${points[0].x} ${points[0].y}`;
-        for (let i = 1; i < points.length; i++) {
-          d += ` L ${points[i].x} ${points[i].y}`;
-        }
-        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        path.setAttribute("d", d);
-        path.setAttribute("fill", "none");
-        path.setAttribute("stroke", s.color);
-        path.setAttribute("stroke-width", "2.5");
-        svg.appendChild(path);
-
-        // Draw Dots
-        points.forEach(pt => {
-          const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-          circle.setAttribute("cx", pt.x);
-          circle.setAttribute("cy", pt.y);
-          circle.setAttribute("r", "4.5");
-          circle.setAttribute("fill", s.color);
-          circle.setAttribute("stroke", "#fff");
-          circle.setAttribute("stroke-width", "1.5");
-          circle.style.cursor = "pointer";
-
-          circle.addEventListener("mouseenter", (e) => {
-            el.chartTooltip.style.opacity = "1";
-            el.chartTooltip.style.left = `${e.offsetX + 10}px`;
-            el.chartTooltip.style.top = `${e.offsetY - 25}px`;
-            el.chartTooltip.textContent = `${pt.label}: $${pt.val}B`;
-          });
-          circle.addEventListener("mouseleave", () => {
-            el.chartTooltip.style.opacity = "0";
-          });
-
-          svg.appendChild(circle);
-        });
-      }
-    });
-
-  } else {
-    // Render Grouped Bar Chart
-    const seriesCount = spec.series.length;
-    const barWidth = Math.max(8, (slotWidth - 14) / seriesCount);
-
-    spec.x_axis_labels.forEach((label, cIdx) => {
-      const slotX = margin.left + cIdx * slotWidth;
-
-      spec.series.forEach((s, sIdx) => {
-        const val = s.data_points[cIdx] || 0;
-        const barH = (val / maxVal) * innerH;
-        const x = slotX + 7 + sIdx * barWidth;
-        const y = margin.top + innerH - barH;
-
-        const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-        rect.setAttribute("class", "chart-svg-bar");
-        rect.setAttribute("x", x);
-        rect.setAttribute("y", y);
-        rect.setAttribute("width", barWidth - 2);
-        rect.setAttribute("height", Math.max(2, barH));
-        rect.setAttribute("fill", s.color);
-        rect.setAttribute("rx", "2");
-
-        rect.addEventListener("mouseenter", (e) => {
-          el.chartTooltip.style.opacity = "1";
-          el.chartTooltip.style.left = `${e.offsetX + 10}px`;
-          el.chartTooltip.style.top = `${e.offsetY - 25}px`;
-          el.chartTooltip.textContent = `${label} [${s.name}]: ${val}`;
-        });
-        rect.addEventListener("mouseleave", () => {
-          el.chartTooltip.style.opacity = "0";
-        });
-
-        svg.appendChild(rect);
-      });
-    });
-  }
-
-  // Draw X-axis labels for both Bar and Line charts
-  spec.x_axis_labels.forEach((label, cIdx) => {
-    const slotX = margin.left + cIdx * slotWidth;
-    const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    txt.setAttribute("x", slotX + slotWidth / 2);
-    txt.setAttribute("y", height - margin.bottom + 16);
-    txt.setAttribute("fill", "#94a3b8");
-    txt.setAttribute("font-size", "10");
-    txt.setAttribute("font-family", "ui-monospace");
-    txt.setAttribute("text-anchor", "middle");
-    txt.textContent = label;
-    svg.appendChild(txt);
-  });
-}
-
-function renderRadarChart(svg, spec, width, height) {
-  const centerX = width / 2;
-  const centerY = height / 2;
-  const radius = 100;
-  const sides = spec.x_axis_labels.length;
-
-  // Grid Webs
-  for (let level = 1; level <= 4; level++) {
-    const r = (radius / 4) * level;
-    let pathD = "";
-    for (let i = 0; i < sides; i++) {
-      const angle = (i / sides) * Math.PI * 2 - Math.PI / 2;
-      const x = centerX + Math.cos(angle) * r;
-      const y = centerY + Math.sin(angle) * r;
-      pathD += (i === 0 ? "M " : "L ") + `${x} ${y} `;
+  spec.x_axis_labels.forEach((label, index) => svg.append(svgElement("text", {
+    x: x0 + (index + .5) * slot, y: 280, fill: "#66534f", "font-size": 9, "text-anchor": "middle"
+  }, label)));
+  spec.series.forEach((series, seriesIndex) => {
+    const color = palette[seriesIndex % palette.length];
+    const points = series.data_points.map((value, index) => [x0 + (index + .5) * slot, y(value)]);
+    if (spec.chart_type === "LINE") {
+      svg.append(svgElement("polyline", { points: points.map(point => point.join(",")).join(" "), fill: "none", stroke: color, "stroke-width": 2.5 }));
     }
-    pathD += "Z";
-    const web = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    web.setAttribute("d", pathD);
-    web.setAttribute("fill", "none");
-    web.setAttribute("stroke", "rgba(255,255,255,0.08)");
-    web.setAttribute("stroke-dasharray", "2,2");
-    svg.appendChild(web);
-  }
-
-  // Draw Axes and Labels
-  spec.x_axis_labels.forEach((lbl, i) => {
-    const angle = (i / sides) * Math.PI * 2 - Math.PI / 2;
-    const x = centerX + Math.cos(angle) * radius;
-    const y = centerY + Math.sin(angle) * radius;
-
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    line.setAttribute("x1", centerX);
-    line.setAttribute("y1", centerY);
-    line.setAttribute("x2", x);
-    line.setAttribute("y2", y);
-    line.setAttribute("stroke", "rgba(255,255,255,0.12)");
-    svg.appendChild(line);
-
-    // Label
-    const lx = centerX + Math.cos(angle) * (radius + 20);
-    const ly = centerY + Math.sin(angle) * (radius + 15);
-    const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    txt.setAttribute("x", lx);
-    txt.setAttribute("y", ly);
-    txt.setAttribute("fill", "#94a3b8");
-    txt.setAttribute("font-size", "9");
-    txt.setAttribute("font-family", "ui-monospace");
-    txt.setAttribute("text-anchor", "middle");
-    txt.textContent = lbl.split(" ")[0];
-    svg.appendChild(txt);
-  });
-
-  // Series Polygons
-  spec.series.forEach(s => {
-    let polyD = "";
-    s.data_points.forEach((val, i) => {
-      const angle = (i / sides) * Math.PI * 2 - Math.PI / 2;
-      const normalizedR = Math.min(radius, (val / 3.0) * radius);
-      const x = centerX + Math.cos(angle) * normalizedR;
-      const y = centerY + Math.sin(angle) * normalizedR;
-      polyD += (i === 0 ? "M " : "L ") + `${x} ${y} `;
-    });
-    polyD += "Z";
-
-    const poly = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    poly.setAttribute("d", polyD);
-    poly.setAttribute("fill", s.color + "33");
-    poly.setAttribute("stroke", s.color);
-    poly.setAttribute("stroke-width", "2");
-    svg.appendChild(poly);
-
-    // Series Vertex Interactive Dots
-    s.data_points.forEach((val, i) => {
-      const angle = (i / sides) * Math.PI * 2 - Math.PI / 2;
-      const normalizedR = Math.min(radius, (val / 3.0) * radius);
-      const x = centerX + Math.cos(angle) * normalizedR;
-      const y = centerY + Math.sin(angle) * normalizedR;
-
-      const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      dot.setAttribute("cx", x);
-      dot.setAttribute("cy", y);
-      dot.setAttribute("r", "3.5");
-      dot.setAttribute("fill", s.color);
-      dot.setAttribute("stroke", "#fff");
-      dot.setAttribute("stroke-width", "1.5");
-      dot.style.cursor = "pointer";
-
-      dot.addEventListener("mouseenter", (e) => {
-        el.chartTooltip.style.opacity = "1";
-        el.chartTooltip.style.left = `${e.offsetX + 10}px`;
-        el.chartTooltip.style.top = `${e.offsetY - 25}px`;
-        el.chartTooltip.textContent = `${spec.x_axis_labels[i]} [${s.name}]: ${val}`;
-      });
-      dot.addEventListener("mouseleave", () => {
-        el.chartTooltip.style.opacity = "0";
-      });
-      svg.appendChild(dot);
+    const width = Math.min(34, slot * .72 / spec.series.length);
+    points.forEach(([x, top], index) => {
+      const value = series.data_points[index];
+      const mark = spec.chart_type === "LINE"
+        ? svgElement("circle", { cx: x, cy: top, r: 4.2, fill: color })
+        : svgElement("rect", { class: "chart-svg-bar", x: x + (seriesIndex - spec.series.length / 2) * width, y: Math.min(top, y(0)), width: Math.max(1, width - 2), height: Math.max(1, Math.abs(top - y(0))), rx: 3, fill: color });
+      chartTooltip(mark, spec.x_axis_labels[index] + " · " + series.name + ": " + value.toLocaleString("en-US"));
+      svg.append(mark);
     });
   });
 }
 
-/* =========================================================================
-   WORKSPACE 2: ARLO WEB SCRAPING AUTOMATION
-   ========================================================================= */
-async function initArloScraperWorkspace() {
-  // Load Scraper Workers Telemetry
+function renderRadar(svg, spec, palette) {
+  const scale = Math.max(1, ...spec.series.flatMap(series => series.data_points));
+  function point(index, ratio) {
+    const angle = index / spec.x_axis_labels.length * Math.PI * 2 - Math.PI / 2;
+    return [190 + Math.cos(angle) * 92 * ratio, 156 + Math.sin(angle) * 92 * ratio];
+  }
+  for (const ratio of [.25, .5, .75, 1]) {
+    svg.append(svgElement("polygon", { points: spec.x_axis_labels.map((_, index) => point(index, ratio).join(",")).join(" "), fill: "none", stroke: "#d7c5ba" }));
+  }
+  spec.x_axis_labels.forEach((label, index) => {
+    const [x, y] = point(index, 1.17);
+    svg.append(svgElement("text", { x, y, "text-anchor": "middle", fill: "#66534f", "font-size": 9 }, label));
+  });
+  spec.series.forEach((series, index) => {
+    const color = palette[index % palette.length];
+    const points = series.data_points.map((value, axis) => point(axis, value / scale));
+    svg.append(svgElement("polygon", { points: points.map(position => position.join(",")).join(" "), fill: color, "fill-opacity": ".15", stroke: color, "stroke-width": 2 }));
+    points.forEach(([x, y], axis) => {
+      const mark = svgElement("circle", { cx: x, cy: y, r: 4, fill: color });
+      chartTooltip(mark, series.name + " · " + spec.x_axis_labels[axis] + ": " + series.data_points[axis]);
+      svg.append(mark);
+    });
+  });
+}
+
+async function loadChart(chartType) {
+  const request = ++chartRequest;
   try {
-    const res = await fetch("/api/crawler/workers");
-    if (res.ok) {
-      const workers = await res.json();
-      el.scraperWorkersContainer.innerHTML = workers.map(w => `
-        <div class="worker-node-card">
-          <div class="worker-header">
-            <span style="color: #fff; font-weight: 700;">${w.worker_id.toUpperCase()}</span>
-            <span class="worker-status-active">● ACTIVE</span>
-          </div>
-          <div class="worker-meta-line">
-            <span>${w.region}</span>
-            <span style="color: var(--kuber-gold);">${w.latency_ms} ms</span>
-          </div>
-          <div class="worker-meta-line">
-            <span style="color: var(--text-dim);">${w.type}</span>
-            <span style="color: var(--market-emerald);">${w.uptime_pct}% Uptime</span>
-          </div>
-        </div>
-      `).join("");
-    }
-  } catch (err) {
-    console.error("Worker telemetry error:", err);
+    const spec = await api("/api/edi/chart?chart_type=" + encodeURIComponent(chartType));
+    if (request === chartRequest) renderChart(spec);
+  } catch (error) {
+    if (request === chartRequest) showToast(error.message, "error");
   }
+}
 
-  // Preset selector
-  el.crawlPresetSelect.addEventListener("change", (e) => {
-    if (e.target.value !== "custom") {
-      el.crawlUrlInput.value = e.target.value;
-    } else {
-      el.crawlUrlInput.value = "";
-      el.crawlUrlInput.placeholder = "https://example.com/target-filing";
-      el.crawlUrlInput.focus();
-    }
-  });
+function fillSelect(id, entries, fallback) {
+  const select = byId(id);
+  const prior = select.value;
+  select.replaceChildren(...entries.map(([value, label]) => new Option(label, value)));
+  if (entries.some(([value]) => value === prior)) select.value = prior;
+  else if (fallback && entries.some(([value]) => value === fallback)) select.value = fallback;
+}
 
-  // Execute Crawl
-  el.btnExecuteCrawl.addEventListener("click", async () => {
-    const url = el.crawlUrlInput.value.trim();
-    const strategy = el.pruneStrategySelect.value;
-    if (!url) return;
+async function loadWorkers() {
+  const workers = await api("/api/crawler/workers");
+  byId("scraperWorkersContainer").replaceChildren(...workers.map(worker => {
+    const card = element("article", null, "worker-node-card");
+    const head = element("div", null, "worker-header");
+    head.append(element("strong", worker.region), element("span", worker.latency_ms + " ms", "worker-status-active"));
+    card.append(head, element("p", worker.type, "worker-meta-line"));
+    return card;
+  }));
+}
 
-    el.btnExecuteCrawl.disabled = true;
-    el.btnExecuteCrawl.textContent = "Crawling & Pruning...";
-
+let crawlPending = false;
+async function readSource(findEntities) {
+  if (crawlPending) return;
+  const input = byId("crawlUrlInput");
+  if (!input.value.trim() || !input.reportValidity()) {
+    showToast("Enter an HTTP or HTTPS document URL.", "error");
+    return;
+  }
+  const url = input.value.trim();
+  const strategy = byId("pruneStrategySelect").value;
+  const query_context = byId("crawlContextInput").value.trim();
+  if (strategy === "BM25_RELEVANCE" && !query_context) {
+    showToast("Enter terms to rank the document by relevance.", "error");
+    byId("crawlContextInput").focus();
+    return;
+  }
+  const extraction = { strategy, query_context };
+  const button = byId(findEntities ? "btnScrapeToSheet" : "btnExecuteCrawl");
+  const other = byId(findEntities ? "btnExecuteCrawl" : "btnScrapeToSheet");
+  crawlPending = true;
+  other.disabled = true;
+  byId("crawlEntities").replaceChildren();
+  byId("crawlChunkDetails").hidden = true;
+  byId("crawlChunkDetails").open = false;
+  byId("crawlChunks").replaceChildren();
+  for (const id of ["crawlRawChars", "crawlCleanChars", "crawlCompressionBadge"]) text(id, "—");
+  text("crawlSourceStatus", "Reading document…");
+  await runAction(button, "Reading…", async () => {
     try {
-      const crawlRes = await fetch("/api/crawler/crawl", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url, user_agent_mode: "desktop_chrome" })
-      });
-      if (!crawlRes.ok) throw new Error("Crawl failed");
-      const crawlData = await crawlRes.json();
-
-      const rawHtmlPayload = crawlData.raw_html || `<html><body><h1>${crawlData.title}</h1><p>Ingested content from ${url}</p></body></html>`;
-
-      const pruneRes = await fetch("/api/crawler/prune", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          raw_html: rawHtmlPayload,
-          strategy: strategy
-        })
-      });
-      const pruneData = await pruneRes.json();
-
-      el.crawlRawChars.textContent = crawlData.raw_html_length.toLocaleString();
-      el.crawlCleanChars.textContent = pruneData.cleaned_char_count.toLocaleString();
-      el.crawlCompressionBadge.textContent = `${pruneData.compression_ratio_pct}% Compression`;
-      el.crawlMarkdownPreview.innerText = pruneData.markdown_content;
-      showToast(`✓ Crawled & pruned ${crawlData.raw_html_length} raw bytes with ${pruneData.compression_ratio_pct}% compression.`);
-
-    } catch (err) {
-      showToast("Crawler error: " + err.message, "error");
-    } finally {
-      el.btnExecuteCrawl.disabled = false;
-      el.btnExecuteCrawl.textContent = "Ingest & Prune";
+      let source, raw, clean, reduction, markdown, entities, chunks;
+      if (findEntities) {
+        const result = await api("/api/crawler/scrape-to-sheet", { url, ...extraction });
+        ({ source, raw_bytes: raw, cleaned_bytes: clean, compression_pct: reduction, markdown_content: markdown, entities, chunks } = result);
+      } else {
+        const document = await api("/api/crawler/crawl", { url });
+        const result = await api("/api/crawler/prune", { raw_html: document.raw_html, ...extraction });
+        source = document.source;
+        raw = document.raw_html_length;
+        ({ cleaned_char_count: clean, compression_ratio_pct: reduction, markdown_content: markdown, chunks } = result);
+      }
+      text("crawlRawChars", raw.toLocaleString());
+      text("crawlCleanChars", clean.toLocaleString());
+      text("crawlCompressionBadge", reduction + "%");
+      text("crawlMarkdownPreview", markdown || "No readable text was extracted.");
+      text("crawlSourceStatus", source === "fixture" ? "Bundled sample document" : "Retrieved from the requested URL");
+      if (chunks?.length) {
+        byId("crawlChunks").replaceChildren(...chunks.map(chunk => {
+          const article = element("article");
+          article.append(element("strong", "Chunk " + chunk.chunk_index + " · " + chunk.word_count + " words"), element("p", chunk.content));
+          return article;
+        }));
+        byId("crawlChunkDetails").hidden = false;
+      }
+      if (findEntities) {
+        byId("crawlEntities").replaceChildren(...(entities.length ? entities.map(name => element("span", name, "small-badge")) : [element("p", "No known entities matched this document.", "panel-note")]));
+      }
+    } catch (error) {
+      text("crawlSourceStatus", "Document could not be read.");
+      text("crawlMarkdownPreview", error.message);
     }
   });
+  other.disabled = false;
+  crawlPending = false;
+}
 
-  // Scrape & Inject To Sheet Action
-  el.btnScrapeToSheet.addEventListener("click", async () => {
-    const url = el.crawlUrlInput.value.trim();
-    if (!url) return;
+let graphNodes = [];
+async function refreshGraph() {
+  const data = await api("/api/graph/view");
+  graphNodes = data.nodes;
+  visualizer.loadGraphData(data);
+  const companies = graphNodes.filter(item => item.type === "COMPANY").map(item => [item.id, item.label]);
+  fillSelect("graphInspectSelect", graphNodes.map(item => [item.id, item.label]));
+  fillSelect("pathSourceSelect", companies);
+  fillSelect("pathTargetSelect", companies, companies[1]?.[0]);
+  fillSelect("shockSourceSelect", companies, "company-tsm");
+  const current = graphNodes.find(item => item.id === byId("graphInspectSelect").value);
+  if (current) renderNode(current);
+}
 
-    el.btnScrapeToSheet.disabled = true;
-    el.btnScrapeToSheet.textContent = "Scraping & Injecting...";
+function renderNode(node) {
+  byId("graphInspectSelect").value = node.id;
+  const info = element("div", null, "node-detail");
+  info.append(element("h3", node.label), element("p", node.sector || node.type, "panel-note"));
+  const metrics = element("div", null, "ratio-grid");
+  for (const [label, value] of [["Market cap", node.market_cap_b == null ? "—" : "$" + node.market_cap_b + "B"], ["Connections", node.degree ?? 0]]) {
+    const item = element("div");
+    item.append(element("span", label), element("strong", value));
+    metrics.append(item);
+  }
+  info.append(metrics);
+  byId("graphNodeDetail").replaceChildren(info);
+}
 
+async function findPath() {
+  await runAction(byId("btnFindPath"), "Tracing…", async () => {
+    const source_id = byId("pathSourceSelect").value;
+    const target_id = byId("pathTargetSelect").value;
+    if (!source_id || !target_id) return;
+    const result = await api("/api/graph/shortest-path", { source_id, target_id });
+    if (source_id !== byId("pathSourceSelect").value || target_id !== byId("pathTargetSelect").value) return;
+    visualizer.highlightPath(result.found ? result.path_nodes : []);
+    text("pathResultBox", result.strategic_summary);
+  });
+}
+
+async function simulateShock() {
+  await runAction(byId("btnSimulateShock"), "Simulating…", async () => {
+    const shock_source_id = byId("shockSourceSelect").value;
+    const shock_magnitude_pct = Number(byId("shockMagnitudeSlider").value);
+    if (!shock_source_id) return;
+    const result = await api("/api/graph/simulate-contagion", { shock_source_id, shock_magnitude_pct });
+    if (shock_source_id !== byId("shockSourceSelect").value || shock_magnitude_pct !== Number(byId("shockMagnitudeSlider").value)) return;
+    visualizer.triggerShockAnimation(shock_source_id);
+    const title = element("strong", result.systemic_risk_level.replaceAll("_", " ") + " · $" + result.total_market_cap_at_risk_b + "B modeled exposure");
+    byId("shockResultBox").replaceChildren(title, element("p", result.narrative_assessment), element("p", result.affected_nodes.map(node => node.label + " (" + node.shock_intensity_pct + "%)").join(", "), "panel-note"));
+  });
+}
+
+let pipelines = [];
+function renderPipeline(pipeline, run) {
+  const nodes = pipeline?.nodes || [];
+  byId("dagFlowSteps").replaceChildren(...nodes.map((node, index) => {
+    const progress = run?.nodes_state[node.id];
+    const status = progress?.status || "PENDING";
+    const item = element("div", null, "dag-step-node status-" + status);
+    const header = element("div", null, "dag-step-header");
+    header.append(element("span", "STEP " + (index + 1)), element("span", status, "step-status-tag"));
+    item.append(header, element("p", node.name, "dag-step-name"), element("p", progress?.duration_ms != null ? progress.duration_ms + " ms" : "—", "dag-step-duration"));
+    return item;
+  }));
+}
+
+async function loadPipelines() {
+  pipelines = await api("/api/dag/pipelines");
+  fillSelect("dagPipelineSelect", pipelines.map(item => [item.pipeline_id, item.title]));
+  renderPipeline(pipelines.find(item => item.pipeline_id === byId("dagPipelineSelect").value));
+}
+
+async function runPipeline() {
+  await runAction(byId("btnRunDAG"), "Running…", async () => {
+    const select = byId("dagPipelineSelect");
+    const pipeline = pipelines.find(item => item.pipeline_id === select.value);
+    if (!pipeline) return;
+    select.disabled = true;
+    renderPipeline(pipeline);
+    text("dagRunStatus", "Running");
+    text("dagLogStream", "Starting " + pipeline.title + "…");
+    text("dagExecutiveBrief", "Waiting for the run to finish.");
     try {
-      const res = await fetch("/api/crawler/scrape-to-sheet", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url })
-      });
-      if (!res.ok) throw new Error("Scrape to sheet failed");
-      const data = await res.json();
-
-      showToast(`✓ Scraped ${data.scraped_url}: Parsed ${data.cleaned_bytes}B, extracted ${data.entities_extracted} entities!`);
-
-      // Switch to EDI studio tab and refresh sheet
-      const ediTabBtn = document.querySelector('[data-tab="ws-edi-studio"]');
-      if (ediTabBtn) ediTabBtn.click();
-      await loadSpreadsheetData();
-      await loadEDIChart(state.activeChartType);
-
-    } catch (err) {
-      showToast("Scrape to sheet error: " + err.message, "error");
+      const run = await api("/api/dag/execute/" + encodeURIComponent(pipeline.pipeline_id), {});
+      renderPipeline(pipeline, run);
+      text("dagRunStatus", run.status + " · " + run.total_duration_ms + " ms");
+      text("dagLogStream", run.execution_logs.join("\n"));
+      text("dagExecutiveBrief", run.run_artifacts?.executive_brief || "No brief was generated by this run.");
+      await refreshGraph().catch(error => showToast("Graph refresh failed: " + error.message, "error"));
+    } catch (error) {
+      text("dagRunStatus", "Failed");
+      text("dagLogStream", error.message);
+      text("dagExecutiveBrief", "No brief was generated by this run.");
     } finally {
-      el.btnScrapeToSheet.disabled = false;
-      el.btnScrapeToSheet.textContent = "⚡ Scrape & Inject to EDI Sheet";
+      select.disabled = false;
     }
   });
 }
 
-/* =========================================================================
-   WORKSPACE 3: KNOWLEDGE GRAPH & CONTAGION
-   ========================================================================= */
-async function initGraphWorkspace() {
-  state.visualizer = new KuberGraphVisualizer("graphCanvas", (node) => {
-    renderNodeDetail(node);
+let valuationRequest = 0;
+async function loadValuation() {
+  const ticker = byId("valTickerSelect").value;
+  if (!ticker) return;
+  const request = ++valuationRequest;
+  const fields = ["valHealthGrade", "valAltmanScore", "valAltmanZone", "valBeneishScore", "valBeneishRisk", "valGrossMargin", "valOperatingMargin", "valCurrentRatio", "valDebtEquity", "valPeRatio"];
+  for (const id of fields) text(id, "—");
+  byId("valAltmanPointer").hidden = true;
+  text("valAltmanInterp", "Loading " + ticker + "…");
+  try {
+    const report = await api("/api/financials/ratios/" + encodeURIComponent(ticker));
+    if (request !== valuationRequest) return;
+    const altman = report.altman_z;
+    const beneish = report.beneish_m;
+    const values = [report.health_grade, altman.z_score.toFixed(2), altman.zone.replaceAll("_", " "), beneish.m_score.toFixed(2),
+      beneish.manipulation_risk.replaceAll("_", " "), report.gross_margin_pct + "%", report.operating_margin_pct + "%",
+      report.current_ratio, report.debt_to_equity, report.price_to_earnings];
+    fields.forEach((id, index) => text(id, values[index]));
+    text("valAltmanInterp", altman.clinical_interpretation);
+    byId("valAltmanPointer").style.left = Math.min(100, Math.max(0, altman.z_score / 8 * 100)) + "%";
+    byId("valAltmanPointer").hidden = false;
+  } catch (error) {
+    if (request === valuationRequest) text("valAltmanInterp", error.message);
+  }
+}
+
+function boot() {
+  if (location.protocol === "file:") {
+    byId("fileProtocolWarning").hidden = false;
+    return;
+  }
+  for (const tab of tabs) tab.addEventListener("click", () => { location.hash = tab.dataset.tab; });
+  window.addEventListener("hashchange", () => activateWorkspace(true));
+  document.querySelector(".skip-link").addEventListener("click", event => {
+    event.preventDefault();
+    const main = byId("main");
+    main.focus({ preventScroll: true });
+    main.scrollIntoView();
   });
-
-  if (el.btnResetZoom) {
-    el.btnResetZoom.addEventListener("click", () => state.visualizer.resetZoom());
-  }
-
-  await refreshGraphData();
-
-  if (el.btnFindPath) {
-    el.btnFindPath.addEventListener("click", executeShortestPath);
-  }
-
-  if (el.shockMagnitudeSlider) {
-    el.shockMagnitudeSlider.addEventListener("input", (e) => {
-      el.shockMagnitudeVal.textContent = `${e.target.value}%`;
-    });
-  }
-
-  if (el.btnSimulateShock) {
-    el.btnSimulateShock.addEventListener("click", executeContagionSimulation);
-  }
-}
-
-async function refreshGraphData() {
-  try {
-    const res = await fetch("/api/graph/view");
-    if (!res.ok) return;
-    const data = await res.json();
-    state.graphView = data;
-    state.visualizer.loadGraphData(data);
-
-    const companyNodes = data.nodes.filter(n => n.type === "COMPANY");
-    const optionsHTML = companyNodes.map(n => `<option value="${n.id}">${n.label} (${n.ticker || n.id})</option>`).join("");
-
-    if (el.pathSourceSelect) el.pathSourceSelect.innerHTML = optionsHTML;
-    if (el.pathTargetSelect) {
-      el.pathTargetSelect.innerHTML = optionsHTML;
-      if (companyNodes.length > 1) el.pathTargetSelect.selectedIndex = 1;
-    }
-    if (el.shockSourceSelect) {
-      el.shockSourceSelect.innerHTML = optionsHTML;
-      const tsmIdx = companyNodes.findIndex(n => n.ticker === "TSM");
-      if (tsmIdx !== -1) el.shockSourceSelect.selectedIndex = tsmIdx;
-    }
-
-    if (companyNodes.length > 0) {
-      renderNodeDetail(companyNodes[0]);
-    }
-  } catch (err) {
-    console.error("Graph view load error:", err);
-  }
-}
-
-function renderNodeDetail(node) {
-  state.selectedNode = node;
-  el.graphNodeDetail.innerHTML = `
-    <div style="font-weight: 800; font-size: 16px; color: #fff; margin-bottom: 6px;">
-      ${node.label} ${node.ticker ? `<span style="color: var(--kuber-gold); font-family: var(--font-mono);">(${node.ticker})</span>` : ""}
-    </div>
-    <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">${node.sector || "Strategic Entity"}</div>
-    
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-family: var(--font-mono); font-size: 12px;">
-      <div style="background: rgba(255,255,255,0.03); padding: 8px; border-radius: 6px;">
-        <span style="color: var(--text-dim); display: block; font-size: 10px;">MARKET CAP</span>
-        <strong style="color: #fff;">${node.market_cap_b ? `$${node.market_cap_b}B` : "N/A"}</strong>
-      </div>
-      <div style="background: rgba(255,255,255,0.03); padding: 8px; border-radius: 6px;">
-        <span style="color: var(--text-dim); display: block; font-size: 10px;">PAGERANK</span>
-        <strong style="color: var(--kuber-gold);">${node.pagerank || 0}</strong>
-      </div>
-      <div style="background: rgba(255,255,255,0.03); padding: 8px; border-radius: 6px;">
-        <span style="color: var(--text-dim); display: block; font-size: 10px;">GRAPH DEGREE</span>
-        <strong style="color: var(--cyber-cyan);">${node.degree || 0} edges</strong>
-      </div>
-      <div style="background: rgba(255,255,255,0.03); padding: 8px; border-radius: 6px;">
-        <span style="color: var(--text-dim); display: block; font-size: 10px;">ENTITY TYPE</span>
-        <strong style="color: var(--market-emerald);">${node.type}</strong>
-      </div>
-    </div>
-  `;
-}
-
-async function executeShortestPath() {
-  const src = el.pathSourceSelect.value;
-  const tgt = el.pathTargetSelect.value;
-  if (!src || !tgt) return;
-
-  try {
-    el.pathResultBox.innerHTML = '<span style="color: var(--kuber-gold);">Calculating relational pathway...</span>';
-    const res = await fetch("/api/graph/shortest-path", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source_id: src, target_id: tgt })
-    });
-    if (!res.ok) return;
-    const data = await res.json();
-
-    if (data.found) {
-      if (state.visualizer && data.path_nodes) {
-        state.visualizer.highlightPath(data.path_nodes);
-      }
-      el.pathResultBox.innerHTML = `
-        <div style="font-weight: 700; color: var(--kuber-gold); font-size: 12px; margin-bottom: 4px;">
-          ✓ Shortest Path Found (${data.path_distance} Hops)
-        </div>
-        <div style="font-size: 12px; color: #fff;">${data.strategic_summary}</div>
-      `;
-    } else {
-      if (state.visualizer) {
-        state.visualizer.highlightPath([]);
-      }
-      el.pathResultBox.innerHTML = `<span style="color: var(--contagion-rose);">${data.strategic_summary}</span>`;
-    }
-  } catch (err) {
-    console.error("Path error:", err);
-  }
-}
-
-async function executeContagionSimulation() {
-  const src = el.shockSourceSelect.value;
-  const mag = parseFloat(el.shockMagnitudeSlider.value);
-  if (!src) return;
-
-  try {
-    el.shockResultBox.innerHTML = '<span style="color: var(--contagion-rose);">Simulating systemic shock cascade...</span>';
-    state.visualizer.triggerShockAnimation(src, mag);
-
-    const res = await fetch("/api/graph/simulate-contagion", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ shock_source_id: src, shock_magnitude_pct: mag })
-    });
-    if (!res.ok) return;
-    const data = await res.json();
-
-    el.shockResultBox.innerHTML = `
-      <div style="border-left: 3px solid var(--contagion-rose); padding-left: 10px; margin-bottom: 8px;">
-        <div style="font-weight: 800; color: var(--contagion-rose); font-size: 12px;">
-          ⚠️ ${data.systemic_risk_level} — $${data.total_market_cap_at_risk_b}B AT RISK
-        </div>
-        <div style="font-size: 12px; color: #e2e8f0; margin-top: 4px;">${data.narrative_assessment}</div>
-      </div>
-      <div style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);">
-        Downstream Exposed: ${data.affected_nodes.map(n => `<span style="color: #fff;">${n.label} (-${n.shock_intensity_pct}%)</span>`).join(", ")}
-      </div>
-    `;
-  } catch (err) {
-    console.error("Shock simulation error:", err);
-  }
-}
-
-/* =========================================================================
-   WORKSPACE 4: AUTONOMOUS DAG ORCHESTRATOR
-   ========================================================================= */
-async function initDAGWorkspace() {
-  try {
-    const res = await fetch("/api/dag/pipelines");
-    if (res.ok) {
-      const pipelines = await res.json();
-      el.dagPipelineSelect.innerHTML = pipelines.map(p => `
-        <option value="${p.pipeline_id}">${p.title}</option>
-      `).join("");
-      renderDAGFlowSteps(pipelines[0]);
-    }
-  } catch (err) {
-    console.error("DAG load error:", err);
-  }
-
-  el.dagPipelineSelect.addEventListener("change", async (e) => {
-    state.activePipelineId = e.target.value;
-    const res = await fetch("/api/dag/pipelines");
-    const pipelines = await res.json();
-    const sel = pipelines.find(p => p.pipeline_id === state.activePipelineId);
-    if (sel) renderDAGFlowSteps(sel);
+  visualizer = new KuberGraphVisualizer("graphCanvas", renderNode);
+  activateWorkspace();
+  byId("queryForm").addEventListener("submit", event => { event.preventDefault(); executeQuery(); });
+  for (const chip of document.querySelectorAll(".quick-prompt-chip")) chip.addEventListener("click", () => {
+    if (byId("btnRunEDI").disabled) return;
+    byId("ediQueryInput").value = chip.dataset.query;
+    executeQuery();
   });
-
-  el.btnRunDAG.addEventListener("click", executeDAGRun);
-}
-
-function renderDAGFlowSteps(pipeline) {
-  if (!pipeline || !pipeline.nodes) return;
-  el.dagFlowSteps.innerHTML = pipeline.nodes.map((n, i) => `
-    <div class="dag-step-node status-PENDING" id="dagNode-${n.id}">
-      <div class="dag-step-header">
-        <span>STEP 0${i + 1}</span>
-        <span class="step-status-tag" style="font-size: 10px;">PENDING</span>
-      </div>
-      <div class="dag-step-name">${n.name}</div>
-      <div class="dag-step-duration" id="dagDuration-${n.id}">-- ms</div>
-    </div>
-    ${i < pipeline.nodes.length - 1 ? '<div class="dag-arrow">→</div>' : ""}
-  `).join("");
-}
-
-async function executeDAGRun() {
-  el.btnRunDAG.disabled = true;
-  el.btnRunDAG.textContent = "Executing DAG...";
-  el.dagLogStream.innerHTML = "<div>[INIT] Triggering distributed execution pipeline...</div>";
-  el.dagExecutiveBrief.innerHTML = '<span style="color: var(--text-dim);">Awaiting pipeline completion...</span>';
-
-  try {
-    const res = await fetch(`/api/dag/execute/${state.activePipelineId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({})
-    });
-    if (!res.ok) throw new Error("Execution failed");
-    const run = await res.json();
-
-    el.dagLogStream.innerHTML = run.execution_logs.map(log => `<div>${log}</div>`).join("");
-    el.dagLogStream.scrollTop = el.dagLogStream.scrollHeight;
-
-    for (const [nodeId, state] of Object.entries(run.nodes_state)) {
-      const nodeEl = document.getElementById(`dagNode-${nodeId}`);
-      const durEl = document.getElementById(`dagDuration-${nodeId}`);
-      if (nodeEl) {
-        nodeEl.className = `dag-step-node status-${state.status}`;
-        const tag = nodeEl.querySelector(".step-status-tag");
-        if (tag) tag.textContent = state.status;
-      }
-      if (durEl) {
-        durEl.textContent = `${state.duration_ms} ms`;
-      }
-    }
-
-    if (run.run_artifacts && run.run_artifacts.executive_brief) {
-      el.dagExecutiveBrief.innerHTML = `
-        <div style="border-left: 3px solid var(--kuber-gold); padding-left: 14px;">
-          <h4 style="color: var(--kuber-gold); font-size: 13px; font-family: var(--font-mono); margin-bottom: 6px;">EXECUTIVE INTELLIGENCE SYNTHESIS</h4>
-          <p style="color: #f1f5f9; font-size: 13px; line-height: 1.6;">${run.run_artifacts.executive_brief}</p>
-        </div>
-      `;
-    }
-
-    await refreshGraphData();
-    await loadSpreadsheetData();
-
-  } catch (err) {
-    el.dagLogStream.innerHTML += `<div style="color: var(--contagion-rose);">[ERROR] ${err.message}</div>`;
-  } finally {
-    el.btnRunDAG.disabled = false;
-    el.btnRunDAG.textContent = "Execute Autonomous Pipeline";
-  }
-}
-
-/* =========================================================================
-   WORKSPACE 5: QUANTITATIVE VALUATION & ALTMAN Z
-   ========================================================================= */
-function initValuationWorkspace() {
-  el.valTickerSelect.addEventListener("change", (e) => {
-    state.selectedTicker = e.target.value;
-    loadValuationReport(state.selectedTicker);
+  for (const pill of document.querySelectorAll(".chart-pill-btn")) pill.addEventListener("click", () => loadChart(pill.dataset.chart));
+  byId("btnRefreshSheet").addEventListener("click", () => runAction(byId("btnRefreshSheet"), "Refreshing…", loadWorksheet));
+  byId("btnExportCSV").addEventListener("click", exportCsv);
+  byId("formulaInput").addEventListener("keydown", event => { if (event.key === "Enter") saveCell(); });
+  const sheet = byId("spreadsheetGrid");
+  sheet.setAttribute("role", "grid");
+  sheet.addEventListener("click", event => {
+    const cell = event.target.closest(".editable-cell");
+    if (cell) selectCell(cell);
   });
-
-  loadValuationReport(state.selectedTicker);
+  sheet.addEventListener("dblclick", event => {
+    if (event.target.closest(".editable-cell")) byId("formulaInput").focus();
+  });
+  sheet.addEventListener("keydown", event => {
+    const cell = event.target.closest(".editable-cell");
+    if (!cell) return;
+    const row = cell.parentElement;
+    const moves = {
+      ArrowLeft: cell.previousElementSibling,
+      ArrowRight: cell.nextElementSibling,
+      ArrowUp: row.previousElementSibling?.cells[cell.cellIndex],
+      ArrowDown: row.nextElementSibling?.cells[cell.cellIndex]
+    };
+    if (event.key === "Enter") {
+      event.preventDefault();
+      byId("formulaInput").focus();
+    } else if (event.key in moves) {
+      event.preventDefault();
+      const next = moves[event.key];
+      if (next?.classList.contains("editable-cell")) {
+        selectCell(next);
+        next.focus();
+      }
+    }
+  });
+  byId("crawlPresetSelect").addEventListener("change", event => {
+    byId("crawlUrlInput").value = event.target.value === "custom" ? "" : event.target.value;
+    if (event.target.value === "custom") byId("crawlUrlInput").focus();
+  });
+  byId("pruneStrategySelect").addEventListener("change", event => {
+    byId("crawlContextField").hidden = event.target.value !== "BM25_RELEVANCE";
+  });
+  byId("btnExecuteCrawl").addEventListener("click", () => readSource(false));
+  byId("btnScrapeToSheet").addEventListener("click", () => readSource(true));
+  byId("graphInspectSelect").addEventListener("change", event => {
+    const node = graphNodes.find(item => item.id === event.target.value);
+    if (node) renderNode(node);
+  });
+  byId("btnZoomOut").addEventListener("click", () => visualizer.zoomBy(1 / 1.25));
+  byId("btnZoomIn").addEventListener("click", () => visualizer.zoomBy(1.25));
+  byId("btnResetZoom").addEventListener("click", () => visualizer.resetZoom());
+  byId("btnFindPath").addEventListener("click", findPath);
+  byId("btnSimulateShock").addEventListener("click", simulateShock);
+  byId("shockMagnitudeSlider").addEventListener("input", event => text("shockMagnitudeVal", event.target.value + "%"));
+  byId("dagPipelineSelect").addEventListener("change", event => {
+    renderPipeline(pipelines.find(item => item.pipeline_id === event.target.value));
+    text("dagRunStatus", "Ready");
+    text("dagExecutiveBrief", "Run a pipeline to generate the brief.");
+    text("dagLogStream", "Waiting for a run.");
+  });
+  byId("btnRunDAG").addEventListener("click", runPipeline);
+  byId("valTickerSelect").addEventListener("change", loadValuation);
+  loadSnapshot();
+  loadWorksheet().catch(error => {
+    byId("spreadsheetGrid").replaceChildren(element("caption", error.message));
+  });
+  loadChart(activeChartType);
+  loadWorkers().catch(error => text("scraperWorkersContainer", error.message));
+  refreshGraph().catch(error => text("graphNodeDetail", error.message));
+  loadPipelines().catch(error => text("dagRunStatus", error.message));
 }
 
-async function loadValuationReport(ticker) {
-  try {
-    const res = await fetch(`/api/financials/ratios/${ticker}`);
-    if (!res.ok) return;
-    const report = await res.json();
-
-    el.valHealthGrade.textContent = report.health_grade;
-    el.valAltmanScore.textContent = report.altman_z.z_score.toFixed(2);
-    el.valAltmanZone.textContent = report.altman_z.zone.replace("_", " ");
-    el.valAltmanInterp.textContent = report.altman_z.clinical_interpretation;
-
-    const pct = Math.min(96, Math.max(4, (report.altman_z.z_score / 8.0) * 100));
-    el.valAltmanPointer.style.left = `${pct}%`;
-
-    el.valBeneishScore.textContent = report.beneish_m.m_score.toFixed(2);
-    el.valBeneishRisk.textContent = report.beneish_m.manipulation_risk;
-    el.valBeneishRisk.style.color = report.beneish_m.manipulation_risk === "HIGH_RISK" ? "var(--contagion-rose)" : "var(--market-emerald)";
-
-    el.valGrossMargin.textContent = `${report.gross_margin_pct}%`;
-    el.valOperatingMargin.textContent = `${report.operating_margin_pct}%`;
-    el.valCurrentRatio.textContent = report.current_ratio;
-    el.valDebtEquity.textContent = report.debt_to_equity;
-    el.valPeRatio.textContent = report.price_to_earnings;
-
-  } catch (err) {
-    console.error("Valuation load error:", err);
-  }
-}
+boot();

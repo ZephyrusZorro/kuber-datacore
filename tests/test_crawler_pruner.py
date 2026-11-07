@@ -76,5 +76,54 @@ async def test_crawler_mock_fetch(crawler):
     req = CrawlRequest(url="https://sec.gov/edgar/nvda-10k")
     res = await crawler.crawl(req)
     assert res.status_code == 200
+    assert res.source == "fixture"
     assert "NVIDIA" in res.title
     assert res.raw_html_length > 500
+
+@pytest.mark.anyio
+async def test_unavailable_custom_url_fails_without_a_fixture(crawler, monkeypatch):
+    import httpx
+
+    async def unavailable(*args, **kwargs):
+        raise httpx.ConnectError("Unavailable")
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", unavailable)
+    with pytest.raises(RuntimeError, match="Could not reach"):
+        await crawler.crawl(CrawlRequest(url="https://example.invalid/report"))
+
+def test_pruner_handles_nested_boilerplate(pruner):
+    result = pruner.prune_and_convert(
+        '<div class="ad-banner"><div><span>Sponsored</span></div></div>'
+        '<main><p>Research document</p></main>'
+    )
+    assert result.markdown_content == "Research document"
+
+
+def test_prune_request_rejects_a_chunk_window_that_cannot_advance():
+    from pydantic import ValidationError
+    from backend.models import DOMPruneRequest
+
+    with pytest.raises(ValidationError, match="overlap"):
+        DOMPruneRequest(
+            raw_html="<p>Research document</p>",
+            strategy=FilterStrategy.TOKEN_WINDOW_CHUNK,
+            chunk_size_words=10,
+            chunk_overlap_words=10,
+        )
+
+@pytest.mark.anyio
+async def test_web_fetch_keeps_document_when_a_link_is_malformed(crawler, monkeypatch):
+    import httpx
+
+    async def fetch(client, url, **kwargs):
+        return httpx.Response(
+            200,
+            text='<main>Actual report</main><a href="http://[">Broken</a><a href="/filing">Filing</a>',
+            request=httpx.Request("GET", url),
+        )
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fetch)
+    result = await crawler.crawl(CrawlRequest(url="https://example.invalid/report"))
+    assert result.source == "web"
+    assert "Actual report" in result.raw_html
+    assert result.extracted_links == ["https://example.invalid/filing"]

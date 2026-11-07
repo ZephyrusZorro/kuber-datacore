@@ -5,6 +5,7 @@ dynamic in-memory SQLite analytical datastore, and multi-turn financial question
 """
 
 import time
+import math
 import sqlite3
 import re
 from typing import List, Dict, Any, Optional
@@ -174,10 +175,30 @@ class EDIQueryEngine:
 
         if "market cap" in q_lower or "valuation" in q_lower or "worth" in q_lower:
             intent = "MARKET_CAP_ANALYSIS"
-            if "over" in q_lower or ">" in q_lower or "greater" in q_lower:
-                num_match = re.search(r"(\d+)", q)
-                cutoff = float(num_match.group(1)) if num_match else 1000.0
-                sql = f"SELECT ticker, name, sector, market_cap_b FROM companies WHERE market_cap_b >= {cutoff} ORDER BY market_cap_b DESC LIMIT {req.top_k}"
+            comparison = re.search(
+                r"(?P<operator>>=|≥|>|\b(?:greater than or equal to|at least|greater than|over|above)\b)"
+                r"\s*(?:\$?\s*(?P<number>\d[\d,]*(?:\.\d+)?)\s*(?P<unit>trillions?|billions?|millions?|[tbm])?\b)?",
+                q_lower,
+            )
+            if comparison:
+                number = comparison["number"]
+                if number is None:
+                    return EDIQueryResponse(
+                        natural_query=q,
+                        intent=intent,
+                        natural_language_answer="Include a numeric market-cap threshold, such as $2T or 2,000 billion.",
+                        execution_time_ms=round((time.perf_counter() - start_time) * 1000.0, 2),
+                        grounded_record_count=0,
+                    )
+                unit = comparison["unit"]
+                cutoff = float(number.replace(",", ""))
+                if unit in {"t", "trillion", "trillions"}:
+                    cutoff *= 1000
+                elif unit in {"m", "million", "millions"}:
+                    cutoff /= 1000
+                cutoff = min(cutoff, 1e300)
+                operator = ">=" if comparison["operator"] in {">=", "≥", "at least", "greater than or equal to"} else ">"
+                sql = f"SELECT ticker, name, sector, market_cap_b FROM companies WHERE market_cap_b {operator} {cutoff} ORDER BY market_cap_b DESC LIMIT {req.top_k}"
             else:
                 sql = f"SELECT ticker, name, sector, market_cap_b FROM companies ORDER BY market_cap_b DESC LIMIT {req.top_k}"
 
@@ -267,13 +288,20 @@ class EDIQueryEngine:
 
         # Check if chart requested
         chart_spec = None
-        if any(w in q_lower for w in ["chart", "plot", "graph", "visualize", "bar", "margin", "market cap"]):
-            if "margin" in q_lower or "profit" in q_lower:
-                chart_spec = self.generate_chart_spec("BAR")
-            elif "market cap" in q_lower or "valuation" in q_lower:
-                chart_spec = self.generate_chart_spec("LINE")
-            else:
-                chart_spec = self.generate_chart_spec("BAR")
+        metrics = {
+            "PROFITABILITY_RANKING": ("operating_margin_pct", "Operating margin (%)", "BAR"),
+            "MARKET_CAP_ANALYSIS": ("market_cap_b", "Market cap ($B)", "LINE"),
+            "REVENUE_ANALYSIS": ("revenue_b", "Revenue ($B)", "BAR"),
+        }
+        if rows and intent in metrics and any(w in q_lower for w in ["chart", "plot", "graph", "visualize", "bar", "margin", "market cap"]):
+            key, label, chart_type = metrics[intent]
+            chart_spec = ChartSpec(
+                chart_type=chart_type,
+                title=label + " · Query results",
+                x_axis_labels=[row["ticker"] for row in rows],
+                series=[ChartSeries(name=label, data_points=[row[key] or 0 for row in rows], color="#a34f3c")],
+                legend=[label],
+            )
 
         return EDIQueryResponse(
             natural_query=q,
@@ -330,23 +358,31 @@ class EDIQueryEngine:
                 cur.execute(f"UPDATE companies SET {column} = ? WHERE ticker = ?", (str(value).strip(), clean_ticker))
             elif column == "market_cap_b":
                 val_float = float(str(value).replace("$", "").replace("B", "").replace(",", "").strip())
+                if not math.isfinite(val_float) or val_float < 0:
+                    return False
                 cur.execute("UPDATE companies SET market_cap_b = ? WHERE ticker = ?", (val_float, clean_ticker))
             elif column in ["revenue_b", "gross_margin_pct", "operating_margin_pct", "debt_to_equity"]:
                 val_float = float(str(value).replace("%", "").replace(",", "").strip())
+                if not math.isfinite(val_float):
+                    return False
                 cur.execute(f"UPDATE financials SET {column} = ? WHERE ticker = ?", (val_float, clean_ticker))
+            else:
+                return False
+            if cur.rowcount != 1:
+                return False
             self.conn.commit()
             return True
-        except Exception:
+        except (ValueError, TypeError, sqlite3.Error):
             return False
 
     def generate_chart_spec(self, chart_type: str = "BAR") -> ChartSpec:
         """
         Synthesizes structured chart specifications (series, points, axes)
-        for dynamic browser-side SVG/Recharts rendering.
+        for browser-side SVG rendering.
         """
         cur = self.conn.cursor()
         cur.execute("""
-            SELECT c.ticker, c.market_cap_b, COALESCE(f.revenue_b, 0.0) as rev, COALESCE(f.operating_margin_pct, 0.0) as om
+            SELECT c.ticker, c.market_cap_b, COALESCE(f.revenue_b, 0.0) as rev
             FROM companies c LEFT JOIN financials f ON c.ticker = f.ticker
             ORDER BY c.market_cap_b DESC LIMIT 6
         """)
@@ -354,40 +390,37 @@ class EDIQueryEngine:
         tickers = [r["ticker"] for r in records]
 
         if chart_type == "LINE":
-            # Market Cap Line Trend
+            # Compare the six largest sample companies by market cap.
             caps = [r["market_cap_b"] for r in records]
             return ChartSpec(
                 chart_type="LINE",
-                title="Market Capitalization Distribution ($B)",
+                title="Market capitalization · Top six companies",
                 x_axis_labels=tickers,
-                series=[ChartSeries(name="Market Cap ($B)", data_points=caps, color="#facc15")],
+                series=[ChartSeries(name="Market Cap ($B)", data_points=caps, color="#a34f3c")],
                 legend=["Market Cap ($B)"]
             )
         elif chart_type == "RADAR":
-            # 5-Axis Solvency Radar (NVDA Altman components)
+            # Illustrative profiles across five Altman factors.
             return ChartSpec(
                 chart_type="RADAR",
-                title="Altman Z-Score 5-Factor Radar (NVDA)",
+                title="Illustrative solvency profile",
                 x_axis_labels=["Working Capital", "Retained Earnings", "EBIT", "Equity/Liabilities", "Asset Turnover"],
                 series=[
-                    ChartSeries(name="NVDA Actual Factor", data_points=[0.67, 0.51, 0.50, 2.76, 0.92], color="#38bdf8"),
-                    ChartSeries(name="Industry Benchmark", data_points=[0.25, 0.30, 0.20, 1.20, 0.65], color="#10b981")
+                    ChartSeries(name="Sample company", data_points=[0.67, 0.51, 0.50, 2.76, 0.92], color="#a34f3c"),
+                    ChartSeries(name="Reference profile", data_points=[0.25, 0.30, 0.20, 1.20, 0.65], color="#397665")
                 ],
-                legend=["NVDA Actual", "Industry Benchmark"]
+                legend=["Sample company", "Reference profile"]
             )
         else:
-            # Default: Dual Bar Chart (Revenue vs Operating Margin)
             revenues = [r["rev"] for r in records]
-            margins = [r["om"] for r in records]
             return ChartSpec(
                 chart_type="BAR",
-                title="Revenue ($B) & Operating Profitability (%) Across Key Cohort",
+                title="Revenue · Top six by market cap",
                 x_axis_labels=tickers,
                 series=[
-                    ChartSeries(name="Revenue ($B)", data_points=revenues, color="#facc15"),
-                    ChartSeries(name="Operating Margin (%)", data_points=margins, color="#10b981")
+                    ChartSeries(name="Revenue ($B)", data_points=revenues, color="#a34f3c")
                 ],
-                legend=["Revenue ($B)", "Operating Margin (%)"]
+                legend=["Revenue ($B)"]
             )
 
     def _synthesize_natural_answer(self, query: str, intent: str, rows: List[Dict[str, Any]]) -> str:

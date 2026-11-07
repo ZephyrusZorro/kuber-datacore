@@ -1,8 +1,9 @@
 """
 Kuber Data Core (कुबेर) — End-to-End Live Workflow Verification Script
-Tests all 11 live subsystems against the running server on port 8002.
+Exercises 15 workflows against a running Kuber instance.
 """
 
+import os
 import urllib.request
 import json
 import sys
@@ -12,9 +13,12 @@ if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
 
 
+BASE_URL = os.environ.get("KUBER_URL", "http://127.0.0.1:8002").rstrip("/")
+
+
 def post(url, payload):
     req = urllib.request.Request(
-        "http://127.0.0.1:8002" + url,
+        BASE_URL + url,
         data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json"}
     )
@@ -23,7 +27,7 @@ def post(url, payload):
 
 
 def get(url):
-    req = urllib.request.Request("http://127.0.0.1:8002" + url)
+    req = urllib.request.Request(BASE_URL + url)
     with urllib.request.urlopen(req) as resp:
         return json.loads(resp.read().decode())
 
@@ -165,8 +169,8 @@ for w in workers:
     print(f"      - {w['worker_id']}: {w['region']} ({w['latency_ms']}ms, {w['uptime_pct']}% uptime)")
 assert len(workers) == 3
 
-# 15. Arlo Scrape & Inject Directly Into Spreadsheet
-print("\n[TEST 15] Arlo Scrape & Inject Directly into EDI Spreadsheet...")
+# 15. Source Lab document and entity extraction
+print("\n[TEST 15] Source Lab document and entity extraction...")
 scrape_to_sheet = post("/api/crawler/scrape-to-sheet", {
     "url": "https://sec.gov/edgar/nvda-10k"
 })
@@ -176,5 +180,5 @@ print(f"   -> Sheet Rows Total: {scrape_to_sheet['sheet_total_rows']}")
 assert scrape_to_sheet["status"] == "success"
 
 print("\n========================================================================")
-print("  SUCCESS: ALL 15 LIVE WORKFLOWS TESTED AND 100% OPERATIONAL!")
+print("  SUCCESS: ALL 15 API WORKFLOW CHECKS PASSED")
 print("========================================================================")

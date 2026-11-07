@@ -55,6 +55,8 @@ class DOMPruningEngine:
 
         # Step 2: Strip class/id matching boilerplate regex
         for tag in soup.find_all(True):
+            if tag.decomposed:
+                continue
             attrs_str = " ".join(tag.get("class", [])) + " " + str(tag.get("id", ""))
             if self.BOILERPLATE_CLASS_REGEX.search(attrs_str):
                 # Only decompose if not the main container
@@ -103,6 +105,8 @@ class DOMPruningEngine:
         """Removes blocks where anchor tags comprise > 50% of text (e.g. side menus)."""
         candidates = soup.find_all(["div", "section", "ul"])
         for el in candidates:
+            if el.decomposed:
+                continue
             total_text = el.get_text(strip=True)
             if not total_text or len(total_text) > 400:
                 continue
@@ -250,6 +254,8 @@ class DOMPruningEngine:
         Semantic chunker that splits document into overlapping word windows,
         tracking the closest preceding heading for contextual clarity.
         """
+        if not 0 <= overlap < chunk_size:
+            raise ValueError("Chunk overlap must be nonnegative and smaller than the chunk size.")
         lines = markdown_text.split("\n")
         chunks: List[TextChunk] = []
         current_heading = "Overview"

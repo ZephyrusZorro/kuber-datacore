@@ -4,7 +4,7 @@ Enterprise Web Scraping, Financial Ontologies, Knowledge Graph & DAG Pipelines.
 """
 
 from typing import List, Dict, Any, Optional, Literal, Union
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from datetime import datetime
 from enum import Enum
 
@@ -58,7 +58,7 @@ class CrawlRequest(BaseModel):
     max_depth: int = Field(default=1, ge=1, le=3)
     user_agent_mode: Literal["desktop_chrome", "data_bot", "financial_crawler"] = "desktop_chrome"
     extract_links: bool = True
-    timeout_seconds: float = 10.0
+    timeout_seconds: float = Field(default=10.0, gt=0, allow_inf_nan=False)
 
 
 class CrawlResponse(BaseModel):
@@ -71,14 +71,21 @@ class CrawlResponse(BaseModel):
     extracted_links: List[str] = Field(default_factory=list)
     fetch_latency_ms: float
     crawled_at: str
+    source: Literal["fixture", "web"] = "web"
 
 
 class DOMPruneRequest(BaseModel):
     raw_html: str
     strategy: FilterStrategy = FilterStrategy.PRUNING_LXML
     query_context: Optional[str] = None
-    chunk_size_words: int = 400
-    chunk_overlap_words: int = 50
+    chunk_size_words: int = Field(default=400, gt=0)
+    chunk_overlap_words: int = Field(default=50, ge=0)
+
+    @model_validator(mode="after")
+    def validate_chunk_overlap(self):
+        if self.strategy == FilterStrategy.TOKEN_WINDOW_CHUNK and self.chunk_overlap_words >= self.chunk_size_words:
+            raise ValueError("Chunk overlap must be smaller than the chunk size.")
+        return self
 
 
 class TextChunk(BaseModel):

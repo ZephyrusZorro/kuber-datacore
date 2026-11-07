@@ -45,3 +45,12 @@ async def test_execute_e2e_dag_pipeline(orchestrator):
     # Check executive brief artifact
     assert "executive_brief" in run.run_artifacts
     assert "EXECUTIVE INTELLIGENCE BRIEF" in run.run_artifacts["executive_brief"]
+
+@pytest.mark.anyio
+async def test_pipeline_processes_the_selected_source(orchestrator):
+    run = await orchestrator.execute_pipeline(
+        "financial-cortex-e2e",
+        custom_params={"node-1-crawl": {"url": "https://reuters.com/tech/semiconductor-supply-chain"}},
+    )
+    assert run.status == DAGNodeStatus.COMPLETED
+    assert "The Critical Triad of Global AI Compute" in run.run_artifacts["markdown_content"]

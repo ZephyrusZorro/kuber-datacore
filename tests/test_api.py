@@ -2,14 +2,21 @@
 FastAPI HTTP Endpoint Integration Tests for Kuber Data Core.
 """
 
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
 import pytest
 from starlette.testclient import TestClient
-from backend.main import app
+from backend import main
+from backend.db import KuberDatabase
 
 
 @pytest.fixture
-def client():
-    return TestClient(app)
+def client(monkeypatch):
+    with TemporaryDirectory(prefix="kuber-api-test-") as directory:
+        monkeypatch.setattr(main, "db", KuberDatabase(Path(directory) / "test.db"))
+        with TestClient(main.app) as test_client:
+            yield test_client
 
 
 def test_api_health(client):
@@ -132,3 +139,7 @@ def test_api_edi_spreadsheet_and_chart(client):
     })
     assert scrape_resp.status_code == 200
     assert scrape_resp.json()["status"] == "success"
+
+def test_api_unknown_ticker_does_not_return_another_company(client):
+    response = client.get("/api/financials/ratios/UNKNOWN")
+    assert response.status_code == 404
