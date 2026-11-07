@@ -30,10 +30,11 @@ class KuberGraphVisualizer {
     // Shock animation state
     this.shockRipples = [];
     this.highlightedPathNodes = new Set();
+    this.renderFrame = null;
+    this.physicsTicks = 0;
 
     this._setupCanvasSize();
     this._attachEventListeners();
-    this._startAnimationLoop();
   }
 
   _setupCanvasSize() {
@@ -52,6 +53,7 @@ class KuberGraphVisualizer {
     this.canvas.height = Math.round(height * pixelRatio);
     this.ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
     this._render();
+    if (this.physicsTicks || this.shockRipples.length) this._queueRender();
   }
 
   highlightPath(pathNodeIds) {
@@ -63,6 +65,7 @@ class KuberGraphVisualizer {
         this.panY = this.height / 2 - first.y * this.scale;
       }
     }
+    this._queueRender();
   }
 
   loadGraphData(graphView) {
@@ -98,7 +101,7 @@ class KuberGraphVisualizer {
       sourceId: e.source,
       targetId: e.target,
       relation: e.relation,
-      weight: e.weight || 1.0,
+      weight: e.weight ?? 1.0,
       description: e.description,
       source: this.nodeMap.get(e.source),
       target: this.nodeMap.get(e.target)
@@ -106,6 +109,7 @@ class KuberGraphVisualizer {
     if (this.motion.matches) {
       for (let frame = 0; frame < 100; frame++) this._updatePhysics();
     }
+    this._queueRender(this.motion.matches ? 0 : 160);
   }
 
   _getNodeColor(node) {
@@ -125,10 +129,15 @@ class KuberGraphVisualizer {
       radius: 10,
       alpha: 1.0
     });
+    this._queueRender();
   }
 
   _attachEventListeners() {
     window.addEventListener("resize", () => this._setupCanvasSize());
+    this.motion.addEventListener("change", () => this._queueRender());
+    document.addEventListener("visibilitychange", () => {
+      if (this.physicsTicks || this.shockRipples.length) this._queueRender();
+    });
 
     this.canvas.addEventListener("pointerdown", event => {
       if (!event.isPrimary || event.button !== 0) return;
@@ -157,15 +166,25 @@ class KuberGraphVisualizer {
         this.panX = event.clientX - this.dragStartX;
         this.panY = event.clientY - this.dragStartY;
       } else {
-        this.hoverNode = this._findNodeAt(point.x, point.y);
+        const hovered = this._findNodeAt(point.x, point.y);
+        if (hovered === this.hoverNode) return;
+        this.hoverNode = hovered;
       }
+      this._queueRender();
     });
 
-    this.canvas.addEventListener("pointerleave", () => { this.hoverNode = null; });
+    this.canvas.addEventListener("pointerleave", () => {
+      if (this.hoverNode) {
+        this.hoverNode = null;
+        this._queueRender();
+      }
+    });
     this.canvas.addEventListener("lostpointercapture", event => {
       if (!event.isPrimary) return;
+      const movedNode = this.dragNode;
       this.dragNode = null;
       this.isDragging = false;
+      if (movedNode) this._queueRender(120);
     });
 
     this.canvas.addEventListener("wheel", event => {
@@ -194,16 +213,24 @@ class KuberGraphVisualizer {
     return null;
   }
 
-  _startAnimationLoop() {
-    const step = () => {
-      if (this.canvas.clientWidth && !document.hidden) {
-        if (this.motion.matches) this.shockRipples.length = 0;
-        else this._updatePhysics();
-        this._render();
+  _queueRender(physicsTicks = 0) {
+    this.physicsTicks = Math.max(this.physicsTicks, physicsTicks);
+    if (this.renderFrame !== null || document.hidden || !this.canvas.clientWidth) return;
+
+    this.renderFrame = requestAnimationFrame(() => {
+      this.renderFrame = null;
+      if (document.hidden || !this.canvas.clientWidth) return;
+
+      if (this.motion.matches) {
+        this.physicsTicks = 0;
+        this.shockRipples.length = 0;
+      } else if (this.physicsTicks > 0) {
+        this._updatePhysics();
+        this.physicsTicks--;
       }
-      requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
+      this._render();
+      if (this.physicsTicks || this.shockRipples.length) this._queueRender();
+    });
   }
 
   _updatePhysics() {
@@ -372,6 +399,7 @@ class KuberGraphVisualizer {
     this.panX += point.x * (this.scale - scale);
     this.panY += point.y * (this.scale - scale);
     this.scale = scale;
+    this._queueRender();
   }
 
   _fitScale() {
@@ -383,5 +411,6 @@ class KuberGraphVisualizer {
     this.scale = this._fitScale();
     this.panX = this.width / 2;
     this.panY = this.height / 2;
+    this._queueRender();
   }
 }

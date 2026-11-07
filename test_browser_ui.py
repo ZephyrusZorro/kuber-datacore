@@ -140,6 +140,26 @@ def check_graph(page):
     page.get_by_role("button", name="Zoom out").click()
     assert abs(page.evaluate("visualizer.scale") - fitted) < 0.001
 
+    page.emulate_media(reduced_motion="reduce")
+    counts = page.evaluate("""async () => {
+        const canvas = document.getElementById("graphCanvas");
+        const context = canvas.getContext("2d");
+        const clear = context.clearRect;
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        let paints = 0;
+        context.clearRect = function (...args) {
+            paints++;
+            return clear.apply(this, args);
+        };
+        await new Promise(resolve => setTimeout(resolve, 200));
+        context.clearRect = clear;
+        return paints;
+    }""")
+    assert counts == 0, f"Idle graph repainted {counts} times in 200 ms"
+    page.emulate_media(reduced_motion="no-preference")
+    page.locator("#btnResetZoom").click()
+    page.wait_for_function("visualizer.physicsTicks === 0 && visualizer.renderFrame === null")
+
 
 def check_pipeline_and_valuation(page):
     navigate(page, "ws-dag")

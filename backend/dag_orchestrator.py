@@ -7,6 +7,7 @@ real-time step telemetry, and multi-stage financial intelligence workflows.
 import time
 import uuid
 from typing import List, Dict, Any, Optional
+import anyio
 import networkx as nx
 
 from backend.models import (
@@ -16,7 +17,6 @@ from backend.models import (
     DAGNodeExecutionState,
     DAGNodeStatus,
     CrawlRequest,
-    DOMPruneRequest,
     FilterStrategy
 )
 from backend.web_crawler import WebCrawlerEngine
@@ -46,7 +46,6 @@ class DAGOrchestrator:
         self.kg = kg
         self.ratios = ratios
         self.pipelines: Dict[str, DAGPipelineSpec] = self._build_preset_pipelines()
-        self.execution_history: Dict[str, DAGExecutionRun] = {}
 
     def _build_preset_pipelines(self) -> Dict[str, DAGPipelineSpec]:
         """Defines production-grade financial analysis pipelines."""
@@ -144,11 +143,18 @@ class DAGOrchestrator:
     def get_pipeline(self, pipeline_id: str) -> Optional[DAGPipelineSpec]:
         return self.pipelines.get(pipeline_id)
 
-    async def execute_pipeline(self, pipeline_id: str, custom_params: Optional[Dict[str, Any]] = None) -> DAGExecutionRun:
+    async def execute_pipeline(
+        self,
+        pipeline_id: str,
+        custom_params: Optional[Dict[str, Any]] = None,
+        *,
+        crawler: Optional[WebCrawlerEngine] = None,
+    ) -> DAGExecutionRun:
         pipeline = self.pipelines.get(pipeline_id)
         if not pipeline:
             raise ValueError(f"Pipeline '{pipeline_id}' not found.")
 
+        crawler = crawler or self.crawler
         run_id = f"dag-run-{uuid.uuid4().hex[:8]}"
         created_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         run_start = time.perf_counter()
@@ -179,15 +185,16 @@ class DAGOrchestrator:
             for dep in node.dependencies:
                 G.add_edge(dep, node.id)
 
-        # Verify acyclic
-        if not nx.is_directed_acyclic_graph(G):
+        # Validate dependencies before allowing any task to change state.
+        topological_nodes = []
+        if len(G) != len(nodes_state) or len(nodes_state) != len(pipeline.nodes):
             run.status = DAGNodeStatus.FAILED
-            run.execution_logs.append("[ERROR] Pipeline contains dependency cycle. Execution aborted.")
-            self.execution_history[run_id] = run
-            return run
-
-        # Execute in topological order
-        topological_nodes = list(nx.topological_sort(G))
+            run.execution_logs.append("[ERROR] Pipeline contains missing or duplicate task IDs.")
+        elif not nx.is_directed_acyclic_graph(G):
+            run.status = DAGNodeStatus.FAILED
+            run.execution_logs.append("[ERROR] Pipeline contains a dependency cycle.")
+        else:
+            topological_nodes = list(nx.topological_sort(G))
         node_lookup = {n.id: n for n in pipeline.nodes}
         context_artifacts: Dict[str, Any] = {}
 
@@ -206,7 +213,7 @@ class DAGOrchestrator:
                 if custom_params and n_id in custom_params:
                     params.update(custom_params[n_id])
 
-                output_summary = await self._execute_node_task(spec.task_type, params, context_artifacts)
+                output_summary = await self._execute_node_task(spec.task_type, params, context_artifacts, crawler)
                 node_state.duration_ms = round((time.perf_counter() - step_start) * 1000.0, 2)
                 node_state.status = DAGNodeStatus.COMPLETED
                 node_state.completed_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -217,6 +224,7 @@ class DAGOrchestrator:
             except Exception as e:
                 node_state.duration_ms = round((time.perf_counter() - step_start) * 1000.0, 2)
                 node_state.status = DAGNodeStatus.FAILED
+                node_state.completed_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
                 node_state.error_message = str(e)
                 run.status = DAGNodeStatus.FAILED
                 run.execution_logs.append(f"   [FAILED] '{n_id}' error: {str(e)}")
@@ -227,28 +235,38 @@ class DAGOrchestrator:
             run.status = DAGNodeStatus.COMPLETED
 
         run.completed_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        for key in ("extracted_mentions", "extracted_relations"):
+            if key in context_artifacts:
+                context_artifacts[key] = [item.model_dump() for item in context_artifacts[key]]
         run.run_artifacts = context_artifacts
+        for node in nodes_state.values():
+            if node.status == DAGNodeStatus.PENDING:
+                node.status = DAGNodeStatus.SKIPPED
+                node.completed_at = run.completed_at
         run.execution_logs.append(f"[{run.completed_at}] Pipeline completed with status '{run.status.value}' in {run.total_duration_ms}ms.")
 
-        self.execution_history[run_id] = run
         return run
 
     async def _execute_node_task(
         self,
         task_type: str,
         params: Dict[str, Any],
-        context: Dict[str, Any]
+        context: Dict[str, Any],
+        crawler: WebCrawlerEngine,
     ) -> str:
         """Executes a single DAG node task and records outputs in context."""
         if task_type == "FETCH_CRAWLER":
             url = params.get("url", "https://sec.gov/edgar/nvda-10k")
             req = CrawlRequest(url=url, user_agent_mode=params.get("user_agent_mode", "desktop_chrome"))
-            res = await self.crawler.crawl(req)
+            res = await crawler.crawl(req)
             context["raw_html"] = res.raw_html
             context["crawl_result"] = res.model_dump()
             return f"Fetched {res.raw_html_length} bytes from {res.url} (Status: {res.status_code})"
 
-        elif task_type == "PRUNE_DOM_MARKDOWN":
+        return await anyio.to_thread.run_sync(self._execute_local_task, task_type, params, context)
+
+    def _execute_local_task(self, task_type: str, params: Dict[str, Any], context: Dict[str, Any]) -> str:
+        if task_type == "PRUNE_DOM_MARKDOWN":
             raw_html = context.get("raw_html", "<html><body>Empty</body></html>")
             res = self.pruner.prune_and_convert(raw_html, strategy=FilterStrategy.PRUNING_LXML)
             context["markdown_content"] = res.markdown_content
@@ -258,21 +276,12 @@ class DAGOrchestrator:
         elif task_type == "EXTRACT_ENTITIES":
             doc_text = context.get("markdown_content", "Nvidia relies on TSMC for semiconductor chips.")
             res = self.linker.extract_and_link(doc_text, confidence_threshold=params.get("confidence_threshold", 0.70))
-            context["extracted_mentions"] = [m.model_dump() for m in res.mentions]
-            context["extracted_relations"] = [r.model_dump() for r in res.relations]
+            context["extracted_mentions"] = res.mentions
+            context["extracted_relations"] = res.relations
             return f"Resolved {res.total_mentions} mentions across {res.unique_entities} canonical entities with {len(res.relations)} extracted relations"
 
         elif task_type == "LINK_CANONICAL_GRAPH":
-            # Ensure graph is updated with newly extracted relations
-            new_relations = context.get("extracted_relations", [])
-            for r in new_relations:
-                self.kg.add_edge(
-                    source_id=r["source_entity_id"],
-                    target_id=r["target_entity_id"],
-                    relation=r["relation_type"],
-                    weight=r.get("weight", 1.0),
-                    description=r.get("evidence_quote")
-                )
+            self.kg.add_relations(context.get("extracted_relations", []))
             view = self.kg.get_view()
             context["graph_summary"] = {"total_nodes": view.total_nodes, "total_edges": view.total_edges}
             return f"Knowledge graph synchronized: {view.total_nodes} nodes, {view.total_edges} edges, density: {view.graph_density}"

@@ -92,6 +92,7 @@ def test_api_dag_pipeline_execution(client):
     run_data = exec_resp.json()
     assert run_data["status"] == "COMPLETED"
     assert "node-1-crawl" in run_data["nodes_state"]
+    assert client.get("/api/dag/runs").json()[0]["run_id"] == run_data["run_id"]
 
 
 def test_api_edi_natural_query(client):
@@ -143,3 +144,38 @@ def test_api_edi_spreadsheet_and_chart(client):
 def test_api_unknown_ticker_does_not_return_another_company(client):
     response = client.get("/api/financials/ratios/UNKNOWN")
     assert response.status_code == 404
+
+def test_source_analysis_parses_once_and_keeps_raw_html_server_side(client, monkeypatch):
+    source = "https://sec.gov/edgar/nvda-10k"
+    prune = main.pruner_engine.prune_and_convert
+    calls = []
+
+    def record_prune(*args, **kwargs):
+        calls.append(kwargs.get("strategy"))
+        return prune(*args, **kwargs)
+
+    monkeypatch.setattr(main.pruner_engine, "prune_and_convert", record_prune)
+    response = client.post("/api/crawler/analyze", json={
+        "url": source,
+        "strategy": "TOKEN_WINDOW_CHUNK",
+        "include_entities": True,
+    })
+    assert response.status_code == 200
+    result = response.json()
+    assert calls == ["TOKEN_WINDOW_CHUNK"]
+    assert result["provenance"]["source"] == "fixture"
+    assert result["provenance"]["url"] == source
+    assert "raw_html" not in result["provenance"]
+    assert "NVIDIA" in result["document"]["markdown_content"]
+    assert result["document"]["chunks"]
+    assert result["entity_names"]
+    assert len(main.db.list_crawled_docs()) == 1
+
+@pytest.mark.anyio
+async def test_lifespan_crawlers_own_separate_pools():
+    async with main.lifespan(main.app) as first:
+        async with main.lifespan(main.app) as second:
+            assert first["crawler"] is not second["crawler"]
+            assert first["crawler"]._client is not second["crawler"]._client
+        assert not first["crawler"]._client.is_closed
+    assert first["crawler"]._client.is_closed

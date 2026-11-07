@@ -408,17 +408,10 @@ async function readSource(findEntities) {
   text("crawlSourceStatus", "Reading document…");
   await runAction(button, "Reading…", async () => {
     try {
-      let source, raw, clean, reduction, markdown, entities, chunks;
-      if (findEntities) {
-        const result = await api("/api/crawler/scrape-to-sheet", { url, ...extraction });
-        ({ source, raw_bytes: raw, cleaned_bytes: clean, compression_pct: reduction, markdown_content: markdown, entities, chunks } = result);
-      } else {
-        const document = await api("/api/crawler/crawl", { url });
-        const result = await api("/api/crawler/prune", { raw_html: document.raw_html, ...extraction });
-        source = document.source;
-        raw = document.raw_html_length;
-        ({ cleaned_char_count: clean, compression_ratio_pct: reduction, markdown_content: markdown, chunks } = result);
-      }
+      const result = await api("/api/crawler/analyze", { url, ...extraction, include_entities: findEntities });
+      const { source, raw_html_length: raw } = result.provenance;
+      const { cleaned_char_count: clean, compression_ratio_pct: reduction, markdown_content: markdown, chunks } = result.document;
+      const entities = result.entity_names;
       text("crawlRawChars", raw.toLocaleString());
       text("crawlCleanChars", clean.toLocaleString());
       text("crawlCompressionBadge", reduction + "%");

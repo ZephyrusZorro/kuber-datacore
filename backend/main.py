@@ -10,10 +10,12 @@ if sys.platform == "win32":
     if hasattr(sys.stderr, "reconfigure"):
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-from fastapi import FastAPI, HTTPException, Query, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -21,6 +23,8 @@ from backend.models import (
     CrawlRequest,
     CrawlResponse,
     FilterStrategy,
+    DocumentAnalysisRequest,
+    DocumentAnalysisResponse,
     DOMPruneRequest,
     DOMPruneResponse,
     EntityLinkingRequest,
@@ -51,10 +55,18 @@ from backend.sample_market_data import MARKET_TICKERS
 from backend.db import KuberDatabase
 
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with WebCrawlerEngine.create_client() as client:
+        yield {"crawler": WebCrawlerEngine(client)}
+
+
 app = FastAPI(
     title="Kuber Data Core (कुबेर)",
     description="Autonomous Web Intelligence, Financial Knowledge Graph & Market Cortex Pipeline",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 # CORS Middleware
@@ -114,30 +126,54 @@ def get_health():
 
 
 # --- Crawler & DOM Pruner Endpoints ---
-async def fetch_document(req: CrawlRequest) -> CrawlResponse:
+def get_request_crawler(request: Request) -> WebCrawlerEngine:
+    return getattr(request.state, "crawler", crawler_engine)
+
+
+async def fetch_document(req: CrawlRequest, request: Request) -> CrawlResponse:
     try:
-        return await crawler_engine.crawl(req)
+        return await get_request_crawler(request).crawl(req)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except CrawlFetchError as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
 
 
-@app.post("/api/crawler/crawl", response_model=CrawlResponse)
-async def crawl_web_page(req: CrawlRequest):
-    res = await fetch_document(req)
-    prune_res = pruner_engine.prune_and_convert(raw_html=res.raw_html)
-    db.save_crawled_doc(
-        url=res.url,
-        title=res.title,
-        status_code=res.status_code,
-        raw_length=res.raw_html_length,
-        cleaned_length=prune_res.cleaned_char_count,
-        compression_ratio=prune_res.compression_ratio_pct,
-        markdown_preview=prune_res.markdown_content,
-        crawled_at=res.crawled_at
+def analyze_document(crawl: CrawlResponse, req: DocumentAnalysisRequest, persist: bool) -> DocumentAnalysisResponse:
+    document = pruner_engine.prune_and_convert(
+        raw_html=crawl.raw_html, strategy=req.strategy, query_context=req.query_context
     )
-    return res
+    analysis = DocumentAnalysisResponse(provenance=crawl, document=document)
+    if req.include_entities:
+        matches = linker_engine.extract_and_link(document.markdown_content)
+        analysis.entity_mentions = matches.total_mentions
+        analysis.entity_names = list(dict.fromkeys(mention.matched_canonical.name for mention in matches.mentions))
+    if persist:
+        db.save_crawled_doc(
+            url=crawl.url,
+            title=crawl.title,
+            status_code=crawl.status_code,
+            raw_length=crawl.raw_html_length,
+            cleaned_length=document.cleaned_char_count,
+            compression_ratio=document.compression_ratio_pct,
+            markdown_preview=document.markdown_content,
+            crawled_at=crawl.crawled_at,
+        )
+    return analysis
+
+
+@app.post("/api/crawler/analyze", response_model=DocumentAnalysisResponse)
+async def analyze_source(req: DocumentAnalysisRequest, request: Request):
+    crawl = await fetch_document(req, request)
+    return await run_in_threadpool(analyze_document, crawl, req, persist=True)
+
+
+@app.post("/api/crawler/crawl", response_model=CrawlResponse)
+async def crawl_web_page(req: CrawlRequest, request: Request):
+    crawl = await fetch_document(req, request)
+    analysis_request = DocumentAnalysisRequest(url=req.url)
+    await run_in_threadpool(analyze_document, crawl, analysis_request, persist=True)
+    return crawl
 
 
 @app.post("/api/crawler/prune", response_model=DOMPruneResponse)
@@ -158,22 +194,14 @@ def link_financial_entities(req: EntityLinkingRequest):
         text=req.document_text,
         confidence_threshold=req.confidence_threshold
     )
-    # Add newly extracted relations into graph
-    for r in res.relations:
-        kg_engine.add_edge(
-            source_id=r.source_entity_id,
-            target_id=r.target_entity_id,
-            relation=r.relation_type,
-            weight=r.weight,
-            description=r.evidence_quote
-        )
+    kg_engine.add_relations(res.relations)
     return res
 
 
 # --- Knowledge Graph Endpoints ---
 @app.get("/api/graph/view", response_model=KnowledgeGraphView)
 def get_graph_view():
-    return kg_engine.get_view()
+    return Response(kg_engine.get_view_json(), media_type="application/json")
 
 
 @app.post("/api/graph/shortest-path", response_model=ShortestPathResponse)
@@ -215,11 +243,14 @@ class ExecuteDAGRequest(BaseModel):
 
 
 @app.post("/api/dag/execute/{pipeline_id}", response_model=DAGExecutionRun)
-async def execute_dag_pipeline(pipeline_id: str, req: Optional[ExecuteDAGRequest] = None):
+async def execute_dag_pipeline(pipeline_id: str, request: Request, req: Optional[ExecuteDAGRequest] = None):
     try:
         custom_params = req.custom_params if req else None
-        run = await dag_orchestrator.execute_pipeline(pipeline_id, custom_params=custom_params)
-        db.save_dag_run(
+        run = await dag_orchestrator.execute_pipeline(
+            pipeline_id, custom_params=custom_params, crawler=get_request_crawler(request)
+        )
+        await run_in_threadpool(
+            db.save_dag_run,
             run_id=run.run_id,
             pipeline_id=run.pipeline_id,
             status=run.status.value,
@@ -279,26 +310,25 @@ class ScrapeToSheetRequest(BaseModel):
 
 
 @app.post("/api/crawler/scrape-to-sheet")
-async def scrape_and_load_into_sheet(req: ScrapeToSheetRequest):
-    crawl_res = await fetch_document(CrawlRequest(url=req.url))
-    prune_res = pruner_engine.prune_and_convert(
-        raw_html=crawl_res.raw_html, strategy=req.strategy, query_context=req.query_context
+async def scrape_and_load_into_sheet(req: ScrapeToSheetRequest, request: Request):
+    analysis_request = DocumentAnalysisRequest(
+        url=req.url, strategy=req.strategy, query_context=req.query_context, include_entities=True
     )
-    ner_res = linker_engine.extract_and_link(prune_res.markdown_content)
-    names = list(dict.fromkeys(mention.matched_canonical.name for mention in ner_res.mentions))
-    sheet = edi_engine.get_spreadsheet_data()
+    crawl = await fetch_document(analysis_request, request)
+    result = await run_in_threadpool(analyze_document, crawl, analysis_request, persist=False)
+    sheet = await run_in_threadpool(edi_engine.get_spreadsheet_data)
     return {
         "status": "success",
         "scraped_url": req.url,
-        "raw_bytes": crawl_res.raw_html_length,
-        "cleaned_bytes": prune_res.cleaned_char_count,
-        "compression_pct": prune_res.compression_ratio_pct,
-        "entities_extracted": ner_res.total_mentions,
+        "raw_bytes": crawl.raw_html_length,
+        "cleaned_bytes": result.document.cleaned_char_count,
+        "compression_pct": result.document.compression_ratio_pct,
+        "entities_extracted": result.entity_mentions,
         "sheet_total_rows": sheet.total_rows,
-        "source": crawl_res.source,
-        "markdown_content": prune_res.markdown_content,
-        "entities": names,
-        "chunks": prune_res.chunks,
+        "source": crawl.source,
+        "markdown_content": result.document.markdown_content,
+        "entities": result.entity_names,
+        "chunks": result.document.chunks,
     }
 
 

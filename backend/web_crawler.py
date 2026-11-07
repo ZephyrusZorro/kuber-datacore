@@ -3,10 +3,14 @@ Kuber Data Core (कुबेर) — Resilient Async Web Crawler
 HTTP fetching and bundled financial documents.
 """
 
+from http.cookiejar import CookieJar, DefaultCookiePolicy
 import time
 import re
 import urllib.parse
-from typing import List
+import zlib
+from typing import List, Optional
+
+import anyio
 import httpx
 
 from backend.models import CrawlRequest, CrawlResponse
@@ -18,6 +22,21 @@ class CrawlFetchError(RuntimeError):
 
 class WebCrawlerEngine:
     """Fetch HTML and discover links, with bundled documents for offline demos."""
+
+    MAX_DOCUMENT_BYTES = 4 * 1024 * 1024
+    MAX_REDIRECTS = 5
+    TITLE_START = re.compile(r"<title>", re.IGNORECASE)
+    TITLE_END = re.compile(r"</title>", re.IGNORECASE)
+
+    def __init__(self, client: Optional[httpx.AsyncClient] = None):
+        self._client = client
+
+    @staticmethod
+    def create_client() -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            limits=httpx.Limits(max_connections=8, max_keepalive_connections=8),
+            cookies=CookieJar(policy=DefaultCookiePolicy(allowed_domains=())),
+        )
 
     USER_AGENTS = {
         "desktop_chrome": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
@@ -101,33 +120,41 @@ class WebCrawlerEngine:
                 "User-Agent": self.USER_AGENTS[req.user_agent_mode],
                 "Accept": "text/html,application/xhtml+xml",
                 "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, identity",
             }
             try:
-                async with httpx.AsyncClient(timeout=req.timeout_seconds, follow_redirects=True) as client:
-                    response = await client.get(req.url, headers=headers)
-                    response.raise_for_status()
+                with anyio.fail_after(req.timeout_seconds):
+                    if self._client is None:
+                        async with self.create_client() as client:
+                            html, final_url, status_code, content_type = await self._fetch(client, req, headers)
+                    else:
+                        html, final_url, status_code, content_type = await self._fetch(self._client, req, headers)
             except httpx.HTTPStatusError as error:
                 raise CrawlFetchError(f"Source returned HTTP {error.response.status_code}.") from error
             except httpx.InvalidURL as error:
                 raise ValueError("Enter a valid document URL.") from error
+            except (TimeoutError, httpx.TimeoutException) as error:
+                raise CrawlFetchError("Source download timed out.") from error
             except httpx.RequestError as error:
                 raise CrawlFetchError("Could not reach the source URL.") from error
 
-            html = response.text
-            final_url = str(response.url)
-            status_code = response.status_code
-            content_type = response.headers.get("content-type", "text/html")
             source = "web"
 
         if not html.strip():
             raise CrawlFetchError("The source returned an empty document.")
-        title = re.search(r"<title>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
+        title = final_url
+        title_start = self.TITLE_START.search(html)
+        if title_start:
+            title_end = self.TITLE_END.search(html, title_start.end())
+            if title_end:
+                title = html[title_start.end():title_end.start()].strip()
+
         return CrawlResponse(
             url=final_url,
             status_code=status_code,
             content_type=content_type,
             raw_html_length=len(html),
-            title=title.group(1).strip() if title else final_url,
+            title=title,
             raw_html=html,
             extracted_links=self._extract_links(html, final_url) if req.extract_links else [],
             fetch_latency_ms=round((time.perf_counter() - start_time) * 1000.0, 2),
@@ -135,10 +162,76 @@ class WebCrawlerEngine:
             source=source,
         )
 
+    async def _fetch(
+        self, client: httpx.AsyncClient, req: CrawlRequest, headers: dict[str, str]
+    ) -> tuple[str, str, int, str]:
+        request = client.build_request("GET", req.url, headers=headers, timeout=req.timeout_seconds)
+        redirect_cookies = httpx.Cookies()
+        for _ in range(self.MAX_REDIRECTS + 1):
+            response = await client.send(request, stream=True, follow_redirects=False)
+            try:
+                if response.next_request is not None:
+                    redirect_cookies.extract_cookies(response)
+                    request = response.next_request
+                    request.headers.pop("cookie", None)
+                    redirect_cookies.set_cookie_header(request)
+                    continue
+
+                response.raise_for_status()
+                body = await self._read_body(response)
+                return (
+                    body.decode(response.encoding or "utf-8", errors="replace"),
+                    str(response.url),
+                    response.status_code,
+                    response.headers.get("content-type", "text/html"),
+                )
+            finally:
+                with anyio.CancelScope(shield=True):
+                    await response.aclose()
+
+        raise CrawlFetchError("Source exceeded the redirect limit.")
+
+    async def _read_body(self, response: httpx.Response) -> bytearray:
+        limit = self.MAX_DOCUMENT_BYTES
+        too_large = "Source document exceeds the 4 MiB download limit."
+        content_length = response.headers.get("content-length", "").lstrip("0")
+        if content_length.isascii() and content_length.isdecimal():
+            if len(content_length) > len(str(limit)) or int(content_length) > limit:
+                raise CrawlFetchError(too_large)
+
+        encoding = response.headers.get("content-encoding", "identity").strip().lower()
+        if encoding not in {"gzip", "identity"}:
+            raise CrawlFetchError("Source used an unsupported content encoding.")
+        inflater = zlib.decompressobj(16 + zlib.MAX_WBITS) if encoding == "gzip" else None
+
+        received = 0
+        body = bytearray()
+        try:
+            async for chunk in response.aiter_raw():
+                received += len(chunk)
+                if received > limit:
+                    raise CrawlFetchError(too_large)
+                if inflater is None:
+                    body.extend(chunk)
+                    continue
+                while chunk:
+                    if inflater.eof:
+                        inflater = zlib.decompressobj(16 + zlib.MAX_WBITS)
+                    body.extend(inflater.decompress(chunk, limit - len(body) + 1))
+                    if len(body) > limit:
+                        raise CrawlFetchError(too_large)
+                    chunk = inflater.unused_data
+        except zlib.error as error:
+            raise CrawlFetchError("Source sent an invalid gzip document.") from error
+        if inflater is not None and not inflater.eof:
+            raise CrawlFetchError("Source sent an incomplete gzip document.")
+        return body
+
     def _extract_links(self, html: str, base_url: str) -> List[str]:
-        raw_hrefs = re.findall(r'href=[\'"]([^\'">]+)[\'"]', html, re.IGNORECASE)
         resolved = []
-        for h in raw_hrefs:
+        seen = set()
+        for match in re.finditer(r'href=[\'"]([^\'">]+)[\'"]', html, re.IGNORECASE):
+            h = match[1]
             if h.startswith("#"):
                 continue
             try:
@@ -146,6 +239,9 @@ class WebCrawlerEngine:
                 scheme = urllib.parse.urlsplit(abs_url).scheme
             except ValueError:
                 continue
-            if scheme in {"http", "https"} and abs_url not in resolved:
+            if scheme in {"http", "https"} and abs_url not in seen:
+                seen.add(abs_url)
                 resolved.append(abs_url)
-        return resolved[:25]
+                if len(resolved) == 25:
+                    break
+        return resolved

@@ -61,17 +61,27 @@ class CrawlRequest(BaseModel):
     timeout_seconds: float = Field(default=10.0, gt=0, allow_inf_nan=False)
 
 
-class CrawlResponse(BaseModel):
+class CrawlMetadata(BaseModel):
     url: str
     status_code: int
     content_type: str
     raw_html_length: int
     title: str
-    raw_html: Optional[str] = None
     extracted_links: List[str] = Field(default_factory=list)
     fetch_latency_ms: float
     crawled_at: str
     source: Literal["fixture", "web"] = "web"
+
+
+class CrawlResponse(CrawlMetadata):
+    raw_html: Optional[str] = None
+
+
+class DocumentAnalysisRequest(CrawlRequest):
+    extract_links: bool = False
+    strategy: FilterStrategy = FilterStrategy.PRUNING_LXML
+    query_context: Optional[str] = None
+    include_entities: bool = False
 
 
 class DOMPruneRequest(BaseModel):
@@ -104,6 +114,13 @@ class DOMPruneResponse(BaseModel):
     markdown_content: str
     chunks: List[TextChunk] = Field(default_factory=list)
     extracted_metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class DocumentAnalysisResponse(BaseModel):
+    provenance: CrawlMetadata
+    document: DOMPruneResponse
+    entity_names: List[str] = Field(default_factory=list)
+    entity_mentions: int = 0
 
 
 # --- Entity Linking & Disambiguation Models ---

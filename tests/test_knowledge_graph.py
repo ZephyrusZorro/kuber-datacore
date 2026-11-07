@@ -38,3 +38,40 @@ def test_contagion_simulation_tsmc_shock(kg):
     assert "company-aapl" in affected_ids
     assert res.total_market_cap_at_risk_b > 500.0
     assert res.systemic_risk_level in ["ELEVATED", "SYSTEMIC_CRITICAL"]
+
+def test_graph_view_is_reused_and_invalidated_by_new_evidence(kg, monkeypatch):
+    original = kg._calculate_pagerank
+    calls = []
+
+    def pagerank(*args, **kwargs):
+        calls.append(True)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(kg, "_calculate_pagerank", pagerank)
+    first = kg.get_view()
+    first.nodes.clear()
+    assert kg.get_view().nodes
+    assert len(calls) == 1
+
+    kg.add_edge("company-asml", "company-nvda", "SUPPLIES_TO", description="New evidence")
+    updated = kg.get_view()
+    assert any(edge.description == "New evidence" for edge in updated.edges)
+    assert len(calls) == 2
+
+    kg.add_edge("company-asml", "company-nvda", "SUPPLIES_TO", description="New evidence")
+    assert kg.get_view() == updated
+    assert len(calls) == 2
+
+def test_shock_exposure_counts_each_company_once(kg):
+    from backend.models import EntityType
+
+    for name in ("origin", "broker", "customer"):
+        kg.add_node(name, name, EntityType.COMPANY, market_cap_b=100)
+    kg.add_edge("origin", "customer", "SUPPLIES_TO", weight=0.1)
+    kg.add_edge("origin", "broker", "SUPPLIES_TO")
+    kg.add_edge("broker", "customer", "SUPPLIES_TO")
+    result = kg.simulate_contagion("origin", shock_magnitude_pct=40)
+    customers = [impact for impact in result.affected_nodes if impact.node_id == "customer"]
+    assert len(customers) == 1
+    assert customers[0].shock_intensity_pct == 22.5
+    assert result.total_market_cap_at_risk_b == 92.5

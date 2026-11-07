@@ -54,3 +54,16 @@ async def test_pipeline_processes_the_selected_source(orchestrator):
     )
     assert run.status == DAGNodeStatus.COMPLETED
     assert "The Critical Triad of Global AI Compute" in run.run_artifacts["markdown_content"]
+
+@pytest.mark.anyio
+async def test_failed_fetch_leaves_a_terminal_pipeline_state(orchestrator):
+    run = await orchestrator.execute_pipeline(
+        "financial-cortex-e2e",
+        custom_params={"node-1-crawl": {"url": "file:///private.txt"}},
+    )
+    assert run.status == DAGNodeStatus.FAILED
+    assert run.nodes_state["node-1-crawl"].completed_at
+    assert run.nodes_state["node-1-crawl"].status == DAGNodeStatus.FAILED
+    assert all(state.status in {DAGNodeStatus.FAILED, DAGNodeStatus.SKIPPED}
+               for state in run.nodes_state.values())
+    assert "executive_brief" not in run.run_artifacts

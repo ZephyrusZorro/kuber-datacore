@@ -9,6 +9,8 @@ Kuber Data Core is a local financial research workstation. It combines a sample 
 
 ![Kuber Data Core Research desk](docs/research-desk.png)
 
+[Open-source architecture review and benchmark](docs/architecture-review.md)
+
 ---
 
 ## 1. System Architecture
@@ -117,6 +119,7 @@ kuber-datacore/
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
 | `GET` | `/api/health` | Service health status and engine readiness |
+| `POST` | `/api/crawler/analyze` | Fetch, extract, and optionally link entities in one request |
 | `POST` | `/api/crawler/crawl` | Fetch a web document or bundled fixture |
 | `POST` | `/api/crawler/prune` | Crawl4AI DOM boilerplate pruning & markdown synthesis |
 | `POST` | `/api/entities/link` | FIBO entity disambiguation & relation extraction |
