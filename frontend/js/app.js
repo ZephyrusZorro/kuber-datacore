@@ -20,6 +20,19 @@ const state = {
 // DOM Element Registry
 const el = {};
 
+function showToast(message, type = "success") {
+  const toast = document.getElementById("kuberToast");
+  if (!toast) return;
+  toast.textContent = message;
+  toast.style.borderColor = type === "error" ? "var(--contagion-rose, #f43f5e)" : "var(--kuber-gold, #eab308)";
+  toast.style.color = type === "error" ? "#fca5a5" : "#fef08a";
+  toast.style.display = "block";
+  clearTimeout(toast._timeout);
+  toast._timeout = setTimeout(() => {
+    toast.style.display = "none";
+  }, 4500);
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   initElementRegistry();
   initNavigationTabs();
@@ -120,7 +133,9 @@ function initNavigationTabs() {
       state.currentTab = targetId;
 
       if (targetId === "ws-graph" && state.visualizer) {
+        state.visualizer._setupCanvasSize();
         setTimeout(() => state.visualizer._setupCanvasSize(), 50);
+        setTimeout(() => state.visualizer._setupCanvasSize(), 180);
       }
     });
   });
@@ -294,6 +309,14 @@ function renderSpreadsheetGrid(data) {
       }
     });
   });
+
+  // Auto-select first cell if none selected
+  if (!state.selectedCell) {
+    const firstCell = el.spreadsheetGrid.querySelector(".editable-cell");
+    if (firstCell) {
+      firstCell.click();
+    }
+  }
 }
 
 async function commitCellEdit(ticker, column, value) {
@@ -306,8 +329,9 @@ async function commitCellEdit(ticker, column, value) {
     if (!res.ok) throw new Error("Update failed");
     await loadSpreadsheetData();
     await loadEDIChart(state.activeChartType);
+    showToast(`✓ Updated ${ticker} [${column}] = ${value}`);
   } catch (err) {
-    alert("Error updating cell: " + err.message);
+    showToast("Error updating cell: " + err.message, "error");
   }
 }
 
@@ -523,19 +547,22 @@ function renderSvgChart(spec) {
 
         svg.appendChild(rect);
       });
-
-      // X Label
-      const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      txt.setAttribute("x", slotX + slotWidth / 2);
-      txt.setAttribute("y", height - margin.bottom + 16);
-      txt.setAttribute("fill", "#94a3b8");
-      txt.setAttribute("font-size", "10");
-      txt.setAttribute("font-family", "ui-monospace");
-      txt.setAttribute("text-anchor", "middle");
-      txt.textContent = label;
-      svg.appendChild(txt);
     });
   }
+
+  // Draw X-axis labels for both Bar and Line charts
+  spec.x_axis_labels.forEach((label, cIdx) => {
+    const slotX = margin.left + cIdx * slotWidth;
+    const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    txt.setAttribute("x", slotX + slotWidth / 2);
+    txt.setAttribute("y", height - margin.bottom + 16);
+    txt.setAttribute("fill", "#94a3b8");
+    txt.setAttribute("font-size", "10");
+    txt.setAttribute("font-family", "ui-monospace");
+    txt.setAttribute("text-anchor", "middle");
+    txt.textContent = label;
+    svg.appendChild(txt);
+  });
 }
 
 function renderRadarChart(svg, spec, width, height) {
@@ -609,6 +636,34 @@ function renderRadarChart(svg, spec, width, height) {
     poly.setAttribute("stroke", s.color);
     poly.setAttribute("stroke-width", "2");
     svg.appendChild(poly);
+
+    // Series Vertex Interactive Dots
+    s.data_points.forEach((val, i) => {
+      const angle = (i / sides) * Math.PI * 2 - Math.PI / 2;
+      const normalizedR = Math.min(radius, (val / 3.0) * radius);
+      const x = centerX + Math.cos(angle) * normalizedR;
+      const y = centerY + Math.sin(angle) * normalizedR;
+
+      const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      dot.setAttribute("cx", x);
+      dot.setAttribute("cy", y);
+      dot.setAttribute("r", "3.5");
+      dot.setAttribute("fill", s.color);
+      dot.setAttribute("stroke", "#fff");
+      dot.setAttribute("stroke-width", "1.5");
+      dot.style.cursor = "pointer";
+
+      dot.addEventListener("mouseenter", (e) => {
+        el.chartTooltip.style.opacity = "1";
+        el.chartTooltip.style.left = `${e.offsetX + 10}px`;
+        el.chartTooltip.style.top = `${e.offsetY - 25}px`;
+        el.chartTooltip.textContent = `${spec.x_axis_labels[i]} [${s.name}]: ${val}`;
+      });
+      dot.addEventListener("mouseleave", () => {
+        el.chartTooltip.style.opacity = "0";
+      });
+      svg.appendChild(dot);
+    });
   });
 }
 
@@ -646,6 +701,10 @@ async function initArloScraperWorkspace() {
   el.crawlPresetSelect.addEventListener("change", (e) => {
     if (e.target.value !== "custom") {
       el.crawlUrlInput.value = e.target.value;
+    } else {
+      el.crawlUrlInput.value = "";
+      el.crawlUrlInput.placeholder = "https://example.com/target-filing";
+      el.crawlUrlInput.focus();
     }
   });
 
@@ -667,11 +726,13 @@ async function initArloScraperWorkspace() {
       if (!crawlRes.ok) throw new Error("Crawl failed");
       const crawlData = await crawlRes.json();
 
+      const rawHtmlPayload = crawlData.raw_html || `<html><body><h1>${crawlData.title}</h1><p>Ingested content from ${url}</p></body></html>`;
+
       const pruneRes = await fetch("/api/crawler/prune", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          raw_html: "<html><body>Mock Ingested Content</body></html>",
+          raw_html: rawHtmlPayload,
           strategy: strategy
         })
       });
@@ -681,9 +742,10 @@ async function initArloScraperWorkspace() {
       el.crawlCleanChars.textContent = pruneData.cleaned_char_count.toLocaleString();
       el.crawlCompressionBadge.textContent = `${pruneData.compression_ratio_pct}% Compression`;
       el.crawlMarkdownPreview.innerText = pruneData.markdown_content;
+      showToast(`✓ Crawled & pruned ${crawlData.raw_html_length} raw bytes with ${pruneData.compression_ratio_pct}% compression.`);
 
     } catch (err) {
-      alert("Crawler error: " + err.message);
+      showToast("Crawler error: " + err.message, "error");
     } finally {
       el.btnExecuteCrawl.disabled = false;
       el.btnExecuteCrawl.textContent = "Ingest & Prune";
@@ -707,7 +769,7 @@ async function initArloScraperWorkspace() {
       if (!res.ok) throw new Error("Scrape to sheet failed");
       const data = await res.json();
 
-      alert(`✓ Successfully scraped ${data.scraped_url}!\nParsed ${data.cleaned_bytes} bytes (${data.compression_pct}% token compression).\nExtracted ${data.entities_extracted} entities into EDI Spreadsheet.`);
+      showToast(`✓ Scraped ${data.scraped_url}: Parsed ${data.cleaned_bytes}B, extracted ${data.entities_extracted} entities!`);
 
       // Switch to EDI studio tab and refresh sheet
       const ediTabBtn = document.querySelector('[data-tab="ws-edi-studio"]');
@@ -716,7 +778,7 @@ async function initArloScraperWorkspace() {
       await loadEDIChart(state.activeChartType);
 
     } catch (err) {
-      alert("Scrape to sheet error: " + err.message);
+      showToast("Scrape to sheet error: " + err.message, "error");
     } finally {
       el.btnScrapeToSheet.disabled = false;
       el.btnScrapeToSheet.textContent = "⚡ Scrape & Inject to EDI Sheet";
@@ -828,6 +890,9 @@ async function executeShortestPath() {
     const data = await res.json();
 
     if (data.found) {
+      if (state.visualizer && data.path_nodes) {
+        state.visualizer.highlightPath(data.path_nodes);
+      }
       el.pathResultBox.innerHTML = `
         <div style="font-weight: 700; color: var(--kuber-gold); font-size: 12px; margin-bottom: 4px;">
           ✓ Shortest Path Found (${data.path_distance} Hops)
@@ -835,6 +900,9 @@ async function executeShortestPath() {
         <div style="font-size: 12px; color: #fff;">${data.strategic_summary}</div>
       `;
     } else {
+      if (state.visualizer) {
+        state.visualizer.highlightPath([]);
+      }
       el.pathResultBox.innerHTML = `<span style="color: var(--contagion-rose);">${data.strategic_summary}</span>`;
     }
   } catch (err) {

@@ -3,9 +3,16 @@ Kuber Data Core (कुबेर) — Main FastAPI Application
 Autonomous Distributed Web Intelligence, Financial Knowledge Graph & Market Cortex Service.
 """
 
+import sys
+if sys.platform == "win32":
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -75,6 +82,17 @@ dag_orchestrator = DAGOrchestrator(
 edi_engine = EDIQueryEngine()
 
 
+# --- Favicon ---
+@app.get("/favicon.ico", include_in_schema=False)
+def get_favicon():
+    svg_favicon = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+      <rect width="100" height="100" rx="20" fill="#0b0f19"/>
+      <rect x="5" y="5" width="90" height="90" rx="16" fill="none" stroke="#eab308" stroke-width="4"/>
+      <text x="50" y="68" font-family="'JetBrains Mono', monospace" font-size="52" font-weight="900" fill="#eab308" text-anchor="middle">कु</text>
+    </svg>"""
+    return Response(content=svg_favicon, media_type="image/svg+xml")
+
+
 # --- System Health ---
 @app.get("/api/health")
 def get_health():
@@ -99,9 +117,8 @@ def get_health():
 async def crawl_web_page(req: CrawlRequest):
     res = await crawler_engine.crawl(req)
     # Automatically prune and save to db
-    prune_res = pruner_engine.prune_and_convert(
-        raw_html=crawler_engine.MOCK_DOMAINS.get(req.url, f"<html><body>{res.title}</body></html>")
-    )
+    raw_html_content = res.raw_html or crawler_engine.get_html_for_url(req.url)
+    prune_res = pruner_engine.prune_and_convert(raw_html=raw_html_content)
     db.save_crawled_doc(
         url=res.url,
         title=res.title,
@@ -253,10 +270,9 @@ async def scrape_and_load_into_sheet(req: ScrapeToSheetRequest):
     # Crawl target
     crawl_req = CrawlRequest(url=req.url, user_agent_mode="desktop_chrome")
     crawl_res = await crawler_engine.crawl(crawl_req)
-    # Prune DOM
-    prune_res = pruner_engine.prune_and_convert(
-        raw_html=crawler_engine.MOCK_DOMAINS.get(req.url, "<html><body>SEC Ingested</body></html>")
-    )
+    # Prune DOM using true scraped HTML
+    raw_html_content = crawl_res.raw_html or crawler_engine.get_html_for_url(req.url)
+    prune_res = pruner_engine.prune_and_convert(raw_html=raw_html_content)
     # Link entities
     ner_res = linker_engine.extract_and_link(prune_res.markdown_content)
     # Refresh spreadsheet

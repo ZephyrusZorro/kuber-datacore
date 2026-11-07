@@ -4,7 +4,7 @@ NetworkX-powered directed graph analytics, PageRank authority scoring,
 multi-hop supply chain shortest paths, and systemic shock contagion simulation.
 """
 
-from typing import List, Dict, Any, Optional, Tuple, Set
+from typing import List, Dict, Any, Optional, Tuple, Set, Union
 import networkx as nx
 from backend.models import (
     GraphNode,
@@ -90,16 +90,17 @@ class KnowledgeGraphEngine:
         self,
         source_id: str,
         target_id: str,
-        relation: RelationType,
+        relation: Union[RelationType, str],
         weight: float = 1.0,
         description: Optional[str] = None
     ) -> None:
-        edge_id = f"{source_id}-{relation.value}-{target_id}"
+        rel_str = relation.value if hasattr(relation, "value") else str(relation)
+        edge_id = f"{source_id}-{rel_str}-{target_id}"
         self.graph.add_edge(
             source_id,
             target_id,
             id=edge_id,
-            relation=relation,
+            relation=rel_str,
             weight=weight,
             description=description
         )

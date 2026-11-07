@@ -304,6 +304,70 @@ FINANCIAL_RECORDS: Dict[str, FinancialMetrics] = {
         retained_earnings_billions=114.30,
         market_cap_billions=1950.0,
         operating_cash_flow_billions=84.95
+    ),
+    "GOOGL": FinancialMetrics(
+        ticker="GOOGL",
+        company_name="Alphabet Inc.",
+        fiscal_year=2024,
+        revenue_billions=307.39,
+        gross_profit_billions=174.24,
+        operating_income_ebit_billions=84.29,
+        net_income_billions=73.80,
+        total_assets_billions=402.39,
+        total_liabilities_billions=119.50,
+        current_assets_billions=165.20,
+        current_liabilities_billions=78.40,
+        retained_earnings_billions=218.40,
+        market_cap_billions=2100.0,
+        operating_cash_flow_billions=101.75
+    ),
+    "TSLA": FinancialMetrics(
+        ticker="TSLA",
+        company_name="Tesla, Inc.",
+        fiscal_year=2024,
+        revenue_billions=96.77,
+        gross_profit_billions=17.66,
+        operating_income_ebit_billions=8.89,
+        net_income_billions=14.97,
+        total_assets_billions=106.62,
+        total_liabilities_billions=43.01,
+        current_assets_billions=49.62,
+        current_liabilities_billions=28.75,
+        retained_earnings_billions=27.88,
+        market_cap_billions=680.0,
+        operating_cash_flow_billions=13.26
+    ),
+    "AVGO": FinancialMetrics(
+        ticker="AVGO",
+        company_name="Broadcom Inc.",
+        fiscal_year=2024,
+        revenue_billions=51.62,
+        gross_profit_billions=33.15,
+        operating_income_ebit_billions=19.45,
+        net_income_billions=14.08,
+        total_assets_billions=175.80,
+        total_liabilities_billions=105.40,
+        current_assets_billions=22.40,
+        current_liabilities_billions=15.90,
+        retained_earnings_billions=32.10,
+        market_cap_billions=750.0,
+        operating_cash_flow_billions=20.10
+    ),
+    "AMD": FinancialMetrics(
+        ticker="AMD",
+        company_name="Advanced Micro Devices, Inc.",
+        fiscal_year=2024,
+        revenue_billions=22.68,
+        gross_profit_billions=10.42,
+        operating_income_ebit_billions=0.40,
+        net_income_billions=0.85,
+        total_assets_billions=67.89,
+        total_liabilities_billions=12.28,
+        current_assets_billions=16.80,
+        current_liabilities_billions=5.40,
+        retained_earnings_billions=-3.20,
+        market_cap_billions=220.0,
+        operating_cash_flow_billions=1.67
     )
 }
 
@@ -316,5 +380,7 @@ MARKET_TICKERS: List[MarketTicker] = [
     MarketTicker(ticker="ASML", name="ASML Holding", price=798.50, change_dollar=14.30, change_pct=1.82, volume_m=3.1, sector="Lithography", updated_at="16:00:00 EST"),
     MarketTicker(ticker="GOOGL", name="Alphabet Inc", price=168.30, change_dollar=1.40, change_pct=0.84, volume_m=26.5, sector="Internet", updated_at="16:00:00 EST"),
     MarketTicker(ticker="AMZN", name="Amazon.com", price=186.40, change_dollar=3.10, change_pct=1.69, volume_m=34.9, sector="Cloud/Retail", updated_at="16:00:00 EST"),
-    MarketTicker(ticker="TSLA", name="Tesla Inc", price=218.80, change_dollar=-3.40, change_pct=-1.53, volume_m=58.3, sector="Automotive", updated_at="16:00:00 EST")
+    MarketTicker(ticker="TSLA", name="Tesla Inc", price=218.80, change_dollar=-3.40, change_pct=-1.53, volume_m=58.3, sector="Automotive", updated_at="16:00:00 EST"),
+    MarketTicker(ticker="AVGO", name="Broadcom Inc", price=162.70, change_dollar=3.80, change_pct=2.39, volume_m=11.2, sector="Networking Silicon", updated_at="16:00:00 EST"),
+    MarketTicker(ticker="AMD", name="AMD Inc", price=138.90, change_dollar=2.10, change_pct=1.54, volume_m=39.5, sector="Compute GPUs", updated_at="16:00:00 EST")
 ]

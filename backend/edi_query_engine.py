@@ -152,6 +152,26 @@ class EDIQueryEngine:
         cypher = None
 
         # Rule-based NL-to-SQL Compiler
+        # Check single ticker/company lookups
+        ticker_aliases = {
+            "NVDA": ["nvidia", "nvda"],
+            "MSFT": ["microsoft", "msft", "azure"],
+            "AAPL": ["apple", "aapl", "iphone"],
+            "GOOGL": ["google", "alphabet", "googl"],
+            "AMZN": ["amazon", "amzn", "aws"],
+            "TSM": ["tsmc", "tsm", "taiwan semi"],
+            "ASML": ["asml"],
+            "TSLA": ["tesla", "tsla"],
+            "AVGO": ["broadcom", "avgo"],
+            "AMD": ["amd", "advanced micro"]
+        }
+
+        matched_company = None
+        for t_code, aliases in ticker_aliases.items():
+            if any(re.search(rf"\b{a}\b", q_lower) for a in aliases):
+                matched_company = t_code
+                break
+
         if "market cap" in q_lower or "valuation" in q_lower or "worth" in q_lower:
             intent = "MARKET_CAP_ANALYSIS"
             if "over" in q_lower or ">" in q_lower or "greater" in q_lower:
@@ -161,37 +181,63 @@ class EDIQueryEngine:
             else:
                 sql = f"SELECT ticker, name, sector, market_cap_b FROM companies ORDER BY market_cap_b DESC LIMIT {req.top_k}"
 
+        elif "revenue" in q_lower or "sales" in q_lower:
+            intent = "REVENUE_ANALYSIS"
+            if matched_company:
+                sql = f"SELECT c.ticker, c.name, f.revenue_b, f.operating_income_b, f.net_income_b FROM companies c JOIN financials f ON c.ticker = f.ticker WHERE c.ticker = '{matched_company}'"
+            else:
+                sql = f"SELECT c.ticker, c.name, f.revenue_b, f.operating_income_b, f.net_income_b FROM companies c JOIN financials f ON c.ticker = f.ticker ORDER BY f.revenue_b DESC LIMIT {req.top_k}"
+
+        elif "debt" in q_lower or "leverage" in q_lower or "liabilit" in q_lower:
+            intent = "LEVERAGE_ANALYSIS"
+            if matched_company:
+                sql = f"SELECT c.ticker, c.name, f.total_liabilities_b, f.debt_to_equity, f.operating_cash_flow_b FROM companies c JOIN financials f ON c.ticker = f.ticker WHERE c.ticker = '{matched_company}'"
+            else:
+                sql = f"SELECT c.ticker, c.name, f.total_liabilities_b, f.debt_to_equity, f.operating_cash_flow_b FROM companies c JOIN financials f ON c.ticker = f.ticker ORDER BY f.debt_to_equity DESC LIMIT {req.top_k}"
+
         elif "margin" in q_lower or "profit" in q_lower:
             intent = "PROFITABILITY_RANKING"
-            sql = f"""
-                SELECT c.ticker, c.name, f.revenue_b, f.gross_profit_b, f.gross_margin_pct, f.operating_margin_pct
-                FROM companies c JOIN financials f ON c.ticker = f.ticker
-                ORDER BY f.operating_margin_pct DESC LIMIT {req.top_k}
-            """
+            if matched_company:
+                sql = f"SELECT c.ticker, c.name, f.revenue_b, f.gross_profit_b, f.gross_margin_pct, f.operating_margin_pct FROM companies c JOIN financials f ON c.ticker = f.ticker WHERE c.ticker = '{matched_company}'"
+            else:
+                sql = f"""
+                    SELECT c.ticker, c.name, f.revenue_b, f.gross_profit_b, f.gross_margin_pct, f.operating_margin_pct
+                    FROM companies c JOIN financials f ON c.ticker = f.ticker
+                    ORDER BY f.operating_margin_pct DESC LIMIT {req.top_k}
+                """
 
         elif "suppl" in q_lower or "customer" in q_lower or "chip" in q_lower or "foundry" in q_lower or "partner" in q_lower:
             intent = "SUPPLY_CHAIN_INSPECTION"
-            if "tsmc" in q_lower or "tsm" in q_lower:
-                sql = "SELECT source_name, relation, target_name, dependency_weight, description FROM supply_chain WHERE source_name = 'TSM' OR target_name = 'TSM'"
-                cypher = "MATCH (s:Company {ticker: 'TSM'})-[r:SUPPLIES_TO]->(t:Company) RETURN s, r, t"
-            elif "nvda" in q_lower or "nvidia" in q_lower:
-                sql = "SELECT source_name, relation, target_name, dependency_weight, description FROM supply_chain WHERE source_name = 'NVDA' OR target_name = 'NVDA'"
-                cypher = "MATCH (s:Company)-[r:SUPPLIES_TO]->(t:Company {ticker: 'NVDA'}) RETURN s, r, t"
-            elif "asml" in q_lower:
-                sql = "SELECT source_name, relation, target_name, dependency_weight, description FROM supply_chain WHERE source_name = 'ASML' OR target_name = 'ASML'"
-                cypher = "MATCH (s:Company {ticker: 'ASML'})-[r:SUPPLIES_TO]->(t:Company) RETURN s, r, t"
+            if matched_company:
+                sql = f"SELECT source_name, relation, target_name, dependency_weight, description FROM supply_chain WHERE source_name = '{matched_company}' OR target_name = '{matched_company}'"
+                cypher = f"MATCH (s)-[r:SUPPLIES_TO]-(t) WHERE s.ticker = '{matched_company}' OR t.ticker = '{matched_company}' RETURN s, r, t"
             else:
                 sql = f"SELECT source_name, relation, target_name, dependency_weight, description FROM supply_chain LIMIT {req.top_k}"
                 cypher = "MATCH (s)-[r:SUPPLIES_TO]->(t) RETURN s, r, t LIMIT 15"
 
         elif "ceo" in q_lower or "executive" in q_lower or "leader" in q_lower:
             intent = "EXECUTIVE_LOOKUP"
-            sql = "SELECT e.name as executive_name, e.title, c.name as company_name, c.ticker FROM executives e JOIN companies c ON e.company_ticker = c.ticker"
+            if matched_company:
+                sql = f"SELECT e.name as executive_name, e.title, c.name as company_name, c.ticker FROM executives e JOIN companies c ON e.company_ticker = c.ticker WHERE c.ticker = '{matched_company}'"
+            else:
+                sql = "SELECT e.name as executive_name, e.title, c.name as company_name, c.ticker FROM executives e JOIN companies c ON e.company_ticker = c.ticker"
 
         elif "compete" in q_lower or "rival" in q_lower:
             intent = "COMPETITOR_ANALYSIS"
-            sql = "SELECT source_name, relation, target_name, description FROM supply_chain WHERE relation = 'COMPETES_WITH'"
-            cypher = "MATCH (a:Company)-[r:COMPETES_WITH]-(b:Company) RETURN a, b"
+            if matched_company:
+                sql = f"SELECT source_name, relation, target_name, description FROM supply_chain WHERE relation = 'COMPETES_WITH' AND (source_name = '{matched_company}' OR target_name = '{matched_company}')"
+                cypher = f"MATCH (a:Company)-[r:COMPETES_WITH]-(b:Company) WHERE a.ticker = '{matched_company}' OR b.ticker = '{matched_company}' RETURN a, b"
+            else:
+                sql = "SELECT source_name, relation, target_name, description FROM supply_chain WHERE relation = 'COMPETES_WITH'"
+                cypher = "MATCH (a:Company)-[r:COMPETES_WITH]-(b:Company) RETURN a, b"
+
+        elif matched_company:
+            intent = "COMPANY_PROFILE"
+            sql = f"""
+                SELECT c.ticker, c.name, c.sector, c.country, c.market_cap_b, f.revenue_b, f.gross_margin_pct, f.operating_margin_pct, f.debt_to_equity
+                FROM companies c LEFT JOIN financials f ON c.ticker = f.ticker
+                WHERE c.ticker = '{matched_company}'
+            """
 
         else:
             intent = "DEFAULT_OVERVIEW"
@@ -276,10 +322,18 @@ class EDIQueryEngine:
         """Dynamically updates a cell value in SQLite analytical store and recalculates metrics."""
         cur = self.conn.cursor()
         try:
-            if column in ["name", "sector", "country", "market_cap_b"]:
-                cur.execute(f"UPDATE companies SET {column} = ? WHERE ticker = ?", (value, ticker.upper()))
+            clean_ticker = ticker.upper().strip()
+            # Normalize column aliases
+            if column in ["company_name", "name"]:
+                cur.execute("UPDATE companies SET name = ? WHERE ticker = ?", (str(value).strip(), clean_ticker))
+            elif column in ["sector", "country"]:
+                cur.execute(f"UPDATE companies SET {column} = ? WHERE ticker = ?", (str(value).strip(), clean_ticker))
+            elif column == "market_cap_b":
+                val_float = float(str(value).replace("$", "").replace("B", "").replace(",", "").strip())
+                cur.execute("UPDATE companies SET market_cap_b = ? WHERE ticker = ?", (val_float, clean_ticker))
             elif column in ["revenue_b", "gross_margin_pct", "operating_margin_pct", "debt_to_equity"]:
-                cur.execute(f"UPDATE financials SET {column} = ? WHERE ticker = ?", (float(value), ticker.upper()))
+                val_float = float(str(value).replace("%", "").replace(",", "").strip())
+                cur.execute(f"UPDATE financials SET {column} = ? WHERE ticker = ?", (val_float, clean_ticker))
             self.conn.commit()
             return True
         except Exception:
@@ -343,6 +397,18 @@ class EDIQueryEngine:
         if intent == "MARKET_CAP_ANALYSIS":
             top = rows[0]
             return f"Retrieved {len(rows)} companies. {top.get('name')} leads the cohort with a market valuation of ${top.get('market_cap_b', 0):,.1f}B."
+
+        elif intent == "REVENUE_ANALYSIS":
+            top = rows[0]
+            return f"Revenue ranking across {len(rows)} firm(s): {top.get('name')} reports ${top.get('revenue_b', 0):,.1f}B in annual sales, generating ${top.get('operating_income_b', 0):,.1f}B in operating income."
+
+        elif intent == "LEVERAGE_ANALYSIS":
+            top = rows[0]
+            return f"Capital structure evaluation: {top.get('name')} maintains a debt-to-equity ratio of {top.get('debt_to_equity')} with ${top.get('total_liabilities_b', 0):,.1f}B total liabilities."
+
+        elif intent == "COMPANY_PROFILE":
+            c = rows[0]
+            return f"{c.get('name')} ({c.get('ticker')}) commands a market cap of ${c.get('market_cap_b', 0):,.1f}B in {c.get('sector')}. Revenue: ${c.get('revenue_b', 0):,.1f}B, Operating Margin: {c.get('operating_margin_pct')}%, D/E: {c.get('debt_to_equity')}."
 
         elif intent == "PROFITABILITY_RANKING":
             leader = rows[0]

@@ -67,6 +67,7 @@ class CrawlResponse(BaseModel):
     content_type: str
     raw_html_length: int
     title: str
+    raw_html: Optional[str] = None
     extracted_links: List[str] = Field(default_factory=list)
     fetch_latency_ms: float
     crawled_at: str

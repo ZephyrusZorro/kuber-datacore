@@ -27,6 +27,7 @@ class KuberGraphVisualizer {
 
     // Shock animation state
     this.shockRipples = [];
+    this.highlightedPathNodes = new Set();
 
     this._setupCanvasSize();
     this._attachEventListeners();
@@ -34,11 +35,26 @@ class KuberGraphVisualizer {
   }
 
   _setupCanvasSize() {
-    const rect = this.canvas.parentElement.getBoundingClientRect();
-    this.canvas.width = rect.width;
-    this.canvas.height = rect.height || 640;
-    this.panX = this.canvas.width / 2;
-    this.panY = this.canvas.height / 2;
+    if (!this.canvas || !this.canvas.parentElement) return;
+    const parent = this.canvas.parentElement;
+    const rect = parent.getBoundingClientRect();
+    const w = rect.width > 50 ? rect.width : (parent.clientWidth || 800);
+    const h = rect.height > 50 ? rect.height : (parent.clientHeight || 640);
+    this.canvas.width = w;
+    this.canvas.height = h;
+    this.panX = w / 2;
+    this.panY = h / 2;
+  }
+
+  highlightPath(pathNodeIds) {
+    this.highlightedPathNodes = new Set(pathNodeIds || []);
+    if (pathNodeIds && pathNodeIds.length > 0) {
+      const first = this.nodeMap.get(pathNodeIds[0]);
+      if (first) {
+        this.panX = this.canvas.width / 2 - first.x * this.scale;
+        this.panY = this.canvas.height / 2 - first.y * this.scale;
+      }
+    }
   }
 
   loadGraphData(graphView) {
@@ -121,9 +137,12 @@ class KuberGraphVisualizer {
     });
 
     window.addEventListener("mousemove", (e) => {
-      const rect = this.canvas.getBoundingClientRect();
-      if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
-        return;
+      if (!this.dragNode && !this.isDragging) {
+        const rect = this.canvas.getBoundingClientRect();
+        if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
+          this.hoverNode = null;
+          return;
+        }
       }
 
       const pos = this._getCanvasCoords(e);
@@ -268,11 +287,19 @@ class KuberGraphVisualizer {
 
     // 2. Draw Edges
     for (const e of this.edges) {
+      const isPathEdge = this.highlightedPathNodes.has(e.source.id) && this.highlightedPathNodes.has(e.target.id);
+
       ctx.beginPath();
       ctx.moveTo(e.source.x, e.source.y);
       ctx.lineTo(e.target.x, e.target.y);
-      ctx.strokeStyle = e.relation === "COMPETES_WITH" ? "rgba(244, 63, 94, 0.4)" : "rgba(234, 179, 8, 0.35)";
-      ctx.lineWidth = Math.max(1, e.weight * 2);
+
+      if (isPathEdge) {
+        ctx.strokeStyle = "#facc15";
+        ctx.lineWidth = 3.5;
+      } else {
+        ctx.strokeStyle = e.relation === "COMPETES_WITH" ? "rgba(244, 63, 94, 0.4)" : "rgba(234, 179, 8, 0.35)";
+        ctx.lineWidth = Math.max(1, e.weight * 2);
+      }
       ctx.stroke();
 
       // Arrow indicator
@@ -283,9 +310,9 @@ class KuberGraphVisualizer {
       ctx.translate(midX, midY);
       ctx.rotate(angle);
       ctx.beginPath();
-      ctx.moveTo(-6, -4);
-      ctx.lineTo(4, 0);
-      ctx.lineTo(-6, 4);
+      ctx.moveTo(-7, -4.5);
+      ctx.lineTo(5, 0);
+      ctx.lineTo(-7, 4.5);
       ctx.fillStyle = ctx.strokeStyle;
       ctx.fill();
       ctx.restore();
@@ -293,10 +320,20 @@ class KuberGraphVisualizer {
 
     // 3. Draw Nodes
     for (const n of this.nodes) {
-      // Glow
+      const isPathNode = this.highlightedPathNodes.has(n.id);
+
+      // Path highlight aura
+      if (isPathNode) {
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.radius + 10, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(250, 204, 21, 0.35)";
+        ctx.fill();
+      }
+
+      // Hover / Default Glow
       ctx.beginPath();
       ctx.arc(n.x, n.y, n.radius + 4, 0, Math.PI * 2);
-      ctx.fillStyle = n === this.hoverNode ? "rgba(255, 255, 255, 0.25)" : "rgba(0, 0, 0, 0.5)";
+      ctx.fillStyle = n === this.hoverNode ? "rgba(255, 255, 255, 0.35)" : (isPathNode ? "rgba(250, 204, 21, 0.2)" : "rgba(0, 0, 0, 0.5)");
       ctx.fill();
 
       // Core
@@ -304,8 +341,8 @@ class KuberGraphVisualizer {
       ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
       ctx.fillStyle = n.color;
       ctx.fill();
-      ctx.strokeStyle = "#fff";
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = isPathNode ? "#facc15" : "#fff";
+      ctx.lineWidth = isPathNode ? 2.5 : 1.5;
       ctx.stroke();
 
       // Label
